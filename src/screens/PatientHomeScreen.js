@@ -1,0 +1,424 @@
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useApp } from '../context/AppContext';
+import { sendSOSAlert } from '../services/emergencyService';
+import { speakMedicationReminder } from '../services/voiceService';
+import { MedicineDetailModal } from './MedicineDetailModal';
+
+export const PatientHomeScreen = () => {
+  const { 
+    medications, 
+    markAsTaken, 
+    setActiveAlarmMed, 
+    caretakerPhone 
+  } = useApp();
+
+  const [selectedMed, setSelectedMed] = useState(null);
+  const [largeFontMode, setLargeFontMode] = useState(false);
+
+  const patientMeds = medications.filter(m => m.patientId === 'p1');
+  const pendingCount = patientMeds.filter(m => m.statusToday === 'pending').length;
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Patient Greeting & Status Banner */}
+      <View style={styles.headerCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.welcomeText, largeFontMode && { fontSize: 26 }]}>
+            Hello, Robert 👋
+          </Text>
+          <Text style={[styles.subText, largeFontMode && { fontSize: 16 }]}>
+            {pendingCount === 0 
+              ? '🎉 All medications taken for today!' 
+              : `You have ${pendingCount} pending medication${pendingCount > 1 ? 's' : ''}.`}
+          </Text>
+        </View>
+
+        {/* Accessibility Large Font Toggle */}
+        <TouchableOpacity 
+          style={[styles.accessibilityBtn, largeFontMode && styles.accessibilityBtnActive]}
+          onPress={() => setLargeFontMode(!largeFontMode)}
+        >
+          <Ionicons 
+            name="text" 
+            size={20} 
+            color={largeFontMode ? '#FFFFFF' : '#0D9488'} 
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* BIG RED SOS BUTTON */}
+      <TouchableOpacity 
+        style={styles.sosCard} 
+        onPress={() => sendSOSAlert('Robert', caretakerPhone)}
+        activeOpacity={0.85}
+      >
+        <View style={styles.sosIconCircle}>
+          <Ionicons name="call" size={34} color="#FFFFFF" />
+        </View>
+        <View style={styles.sosTextContainer}>
+          <Text style={[styles.sosTitle, largeFontMode && { fontSize: 24 }]}>EMERGENCY SOS</Text>
+          <Text style={[styles.sosSubtitle, largeFontMode && { fontSize: 15 }]}>
+            Tap to immediately call Caretaker
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* Section: Today's Schedule */}
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, largeFontMode && { fontSize: 24 }]}>Today's Medicines</Text>
+        <Text style={styles.dateBadge}>
+          {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+        </Text>
+      </View>
+
+      {/* Medication Cards List */}
+      {patientMeds.map((med) => {
+        const isTaken = med.statusToday === 'taken';
+        const isMissed = med.statusToday === 'missed';
+
+        return (
+          <TouchableOpacity 
+            key={med.id} 
+            style={[styles.medCard, isTaken && styles.medCardTaken]}
+            onPress={() => setSelectedMed(med)}
+            activeOpacity={0.9}
+          >
+            {/* Color Strip & Pill Icon */}
+            <View style={[styles.pillColorBar, { backgroundColor: med.color || '#3B82F6' }]}>
+              <Ionicons 
+                name={med.shape === 'capsule' ? 'medical' : 'ellipse'} 
+                size={22} 
+                color="#FFFFFF" 
+              />
+            </View>
+
+            {/* Med Info */}
+            <View style={styles.medContent}>
+              <View style={styles.medTopRow}>
+                <Text style={[
+                  styles.medName, 
+                  largeFontMode && { fontSize: 21 },
+                  isTaken && styles.textStrikethrough
+                ]}>
+                  {med.name}
+                </Text>
+                
+                {/* Voice Readout Button */}
+                <TouchableOpacity 
+                  style={styles.cardVoiceBtn}
+                  onPress={() => speakMedicationReminder(med)}
+                >
+                  <Ionicons name="volume-high" size={18} color="#0D9488" />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.dosageText, largeFontMode && { fontSize: 16 }]}>
+                Dosage: {med.dosage}
+              </Text>
+
+              <View style={styles.medFooterRow}>
+                <View style={styles.timeTag}>
+                  <Ionicons name="time" size={14} color="#64748B" />
+                  <Text style={[styles.timeTagText, largeFontMode && { fontSize: 14 }]}>
+                    {med.time}
+                  </Text>
+                </View>
+                <View style={styles.mealTag}>
+                  <Ionicons name="restaurant-outline" size={14} color="#0D9488" />
+                  <Text style={[styles.mealTagText, largeFontMode && { fontSize: 14 }]}>
+                    {med.mealCondition}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Status and Action Buttons */}
+              <View style={styles.cardActions}>
+                {!isTaken ? (
+                  <>
+                    <TouchableOpacity 
+                      style={styles.takeDoseBtn}
+                      onPress={() => markAsTaken(med.id)}
+                    >
+                      <Ionicons name="checkmark-sharp" size={18} color="#FFFFFF" />
+                      <Text style={[styles.takeDoseBtnText, largeFontMode && { fontSize: 16 }]}>
+                        Take Dose
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Simulator Alarm Trigger for Demo */}
+                    <TouchableOpacity 
+                      style={styles.testAlarmBtn}
+                      onPress={() => setActiveAlarmMed(med)}
+                    >
+                      <Ionicons name="notifications" size={15} color="#0D9488" />
+                      <Text style={styles.testAlarmText}>Alarm</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <View style={styles.statusBadgeTakenFull}>
+                    <Ionicons name="checkmark-done" size={16} color="#166534" />
+                    <Text style={styles.statusTextTaken}>Taken at {med.takenAt}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+
+      {/* Detailed Pill Modal (from diagram: My Medicines -> Medicine Detail) */}
+      <MedicineDetailModal
+        visible={!!selectedMed}
+        med={selectedMed}
+        onClose={() => setSelectedMed(null)}
+        onMarkTaken={markAsTaken}
+      />
+
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  content: {
+    padding: 20,
+  },
+  headerCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 20,
+  },
+  welcomeText: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  subText: {
+    fontSize: 14,
+    color: '#64748B',
+    marginTop: 4,
+  },
+  accessibilityBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accessibilityBtnActive: {
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
+  },
+  sosCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DC2626',
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 24,
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  sosIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  sosTextContainer: {
+    flex: 1,
+  },
+  sosTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  sosSubtitle: {
+    fontSize: 13,
+    color: '#FEE2E2',
+    marginTop: 2,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  dateBadge: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0D9488',
+    backgroundColor: '#CCFBF1',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  medCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  medCardTaken: {
+    opacity: 0.75,
+    backgroundColor: '#F1F5F9',
+  },
+  pillColorBar: {
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medContent: {
+    flex: 1,
+    padding: 16,
+  },
+  medTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  medName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+    flex: 1,
+    marginRight: 8,
+  },
+  cardVoiceBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F0FDFA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+  },
+  textStrikethrough: {
+    textDecorationLine: 'line-through',
+    color: '#64748B',
+  },
+  dosageText: {
+    fontSize: 14,
+    color: '#475569',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  medFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 10,
+  },
+  timeTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeTagText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  mealTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  mealTagText: {
+    fontSize: 13,
+    color: '#0D9488',
+    fontWeight: '600',
+  },
+  cardActions: {
+    flexDirection: 'row',
+    marginTop: 14,
+    gap: 10,
+  },
+  takeDoseBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0D9488',
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+  },
+  takeDoseBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  testAlarmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    gap: 4,
+  },
+  testAlarmText: {
+    color: '#0D9488',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  statusBadgeTakenFull: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 6,
+  },
+  statusTextTaken: {
+    color: '#166534',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+});
