@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -8,9 +8,15 @@ export const AlarmModal = () => {
   const { activeAlarmMed, markAsTaken, snoozeAlarm, triggerMissedEscalation } = useApp();
   const [pulseAnim] = useState(new Animated.Value(1));
   const [isSpeaking, setIsSpeaking] = useState(true);
+  
+  // 60-second countdown before auto-escalating to Caretaker!
+  const [secondsRemaining, setSecondsRemaining] = useState(60);
+  const timerRef = useRef(null);
 
   useEffect(() => {
     if (activeAlarmMed) {
+      setSecondsRemaining(60);
+
       // Start pulsing animation
       Animated.loop(
         Animated.sequence([
@@ -27,15 +33,30 @@ export const AlarmModal = () => {
         ])
       ).start();
 
-      // Trigger Voice TTS Out Loud!
+      // Speak Reminder out loud
       speakMedicationReminder(activeAlarmMed, 'Robert');
       setIsSpeaking(true);
+
+      // Start Countdown Timer
+      timerRef.current = setInterval(() => {
+        setSecondsRemaining((prev) => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current);
+            stopSpeech();
+            triggerMissedEscalation(activeAlarmMed);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } else {
       stopSpeech();
+      if (timerRef.current) clearInterval(timerRef.current);
     }
 
     return () => {
       stopSpeech();
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [activeAlarmMed]);
 
@@ -43,16 +64,19 @@ export const AlarmModal = () => {
 
   const handleTaken = () => {
     stopSpeech();
+    if (timerRef.current) clearInterval(timerRef.current);
     markAsTaken(activeAlarmMed.id);
   };
 
   const handleSnooze = () => {
     stopSpeech();
+    if (timerRef.current) clearInterval(timerRef.current);
     snoozeAlarm(activeAlarmMed.id);
   };
 
-  const handleEscalate = () => {
+  const handleEscalateNow = () => {
     stopSpeech();
+    if (timerRef.current) clearInterval(timerRef.current);
     triggerMissedEscalation(activeAlarmMed);
   };
 
@@ -71,11 +95,19 @@ export const AlarmModal = () => {
       <View style={styles.container}>
         {/* Blinking / Pulsing Alarm Icon */}
         <Animated.View style={[styles.iconCircle, { transform: [{ scale: pulseAnim }] }]}>
-          <Ionicons name="notifications-outline" size={72} color="#FFFFFF" />
+          <Ionicons name="notifications-outline" size={68} color="#FFFFFF" />
         </Animated.View>
 
         <Text style={styles.alertHeader}>⏰ TIME FOR MEDICATION!</Text>
         <Text style={styles.alertSubheader}>Please take your prescribed dose now</Text>
+
+        {/* Live Auto-Escalation Countdown Banner */}
+        <View style={styles.countdownBanner}>
+          <Ionicons name="timer-outline" size={18} color="#F87171" />
+          <Text style={styles.countdownText}>
+            Auto-alerting Caretaker in <Text style={styles.countdownNum}>00:{secondsRemaining < 10 ? `0${secondsRemaining}` : secondsRemaining}s</Text>
+          </Text>
+        </View>
 
         {/* Medicine Detail Card */}
         <View style={styles.card}>
@@ -96,9 +128,9 @@ export const AlarmModal = () => {
 
           {/* Voice Controls */}
           <TouchableOpacity style={styles.speakerBtn} onPress={toggleVoice}>
-            <Ionicons name={isSpeaking ? "volume-high" : "volume-mute"} size={20} color="#38BDF8" />
+            <Ionicons name={isSpeaking ? "volume-high" : "volume-mute"} size={18} color="#38BDF8" />
             <Text style={styles.speakerBtnText}>
-              {isSpeaking ? "Voice: Speaking Reminder..." : "Voice Muted (Tap to Replay)"}
+              {isSpeaking ? "Speaking Instructions..." : "Muted (Tap to Replay)"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -110,7 +142,7 @@ export const AlarmModal = () => {
             onPress={handleTaken}
             activeOpacity={0.8}
           >
-            <Ionicons name="checkmark-circle" size={30} color="#FFFFFF" style={{ marginRight: 10 }} />
+            <Ionicons name="checkmark-circle" size={28} color="#FFFFFF" style={{ marginRight: 10 }} />
             <Text style={styles.btnTakenText}>I HAVE TAKEN IT</Text>
           </TouchableOpacity>
 
@@ -119,17 +151,17 @@ export const AlarmModal = () => {
             onPress={handleSnooze}
             activeOpacity={0.8}
           >
-            <Ionicons name="alarm-outline" size={24} color="#334155" style={{ marginRight: 8 }} />
+            <Ionicons name="alarm-outline" size={22} color="#334155" style={{ marginRight: 8 }} />
             <Text style={styles.btnSnoozeText}>Snooze (10 Mins)</Text>
           </TouchableOpacity>
 
-          {/* Test Escalation Button for Demo */}
+          {/* Instant Escalate Button for Demo */}
           <TouchableOpacity 
             style={styles.escalateDemoBtn}
-            onPress={handleEscalate}
+            onPress={handleEscalateNow}
           >
             <Ionicons name="warning-outline" size={18} color="#EF4444" style={{ marginRight: 6 }} />
-            <Text style={styles.escalateDemoText}>Test Missed Alarm (Notify Caretaker)</Text>
+            <Text style={styles.escalateDemoText}>Skip & Alert Caretaker Immediately</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -146,13 +178,13 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   iconCircle: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: '#DC2626',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
     shadowColor: '#DC2626',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.5,
@@ -160,18 +192,39 @@ const styles = StyleSheet.create({
     elevation: 15,
   },
   alertHeader: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '800',
     color: '#F8FAFC',
     letterSpacing: 1,
     textAlign: 'center',
   },
   alertSubheader: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#94A3B8',
-    marginTop: 6,
-    marginBottom: 24,
+    marginTop: 4,
+    marginBottom: 16,
     textAlign: 'center',
+  },
+  countdownBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+    marginBottom: 20,
+  },
+  countdownText: {
+    color: '#FCA5A5',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  countdownNum: {
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   card: {
     width: '100%',
@@ -185,9 +238,9 @@ const styles = StyleSheet.create({
   },
   colorIndicator: {
     width: 48,
-    height: 12,
-    borderRadius: 6,
-    marginBottom: 14,
+    height: 10,
+    borderRadius: 5,
+    marginBottom: 12,
   },
   medName: {
     fontSize: 22,
@@ -196,14 +249,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   medDosage: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: '#38BDF8',
     marginTop: 6,
   },
   badgeRow: {
     flexDirection: 'row',
-    marginTop: 14,
+    marginTop: 12,
     gap: 10,
   },
   badge: {
@@ -211,12 +264,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#CCFBF1',
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 20,
     gap: 6,
   },
   badgeText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#0F766E',
   },
@@ -227,7 +280,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    marginTop: 16,
+    marginTop: 14,
     gap: 8,
   },
   speakerBtnText: {
@@ -241,7 +294,7 @@ const styles = StyleSheet.create({
   },
   btn: {
     width: '100%',
-    paddingVertical: 18,
+    paddingVertical: 16,
     borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
@@ -257,7 +310,7 @@ const styles = StyleSheet.create({
   },
   btnTakenText: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
@@ -266,19 +319,19 @@ const styles = StyleSheet.create({
   },
   btnSnoozeText: {
     color: '#1E293B',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
   },
   escalateDemoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 6,
     padding: 8,
   },
   escalateDemoText: {
     color: '#F87171',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     textDecorationLine: 'underline',
   },

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { callCaretaker } from '../services/emergencyService';
 import { AddMedicationModal } from './AddMedicationModal';
+import { PairPatientModal } from './PairPatientModal';
 
 export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
   const { 
@@ -16,7 +17,8 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
     adherenceHistory
   } = useApp();
 
-  const [modalVisible, setModalVisible] = useState(false);
+  const [addMedModalVisible, setAddMedModalVisible] = useState(false);
+  const [pairModalVisible, setPairModalVisible] = useState(false);
 
   const currentPatient = patients.find(p => p.id === selectedPatientId) || patients[0];
   const patientMeds = medications.filter(m => m.patientId === currentPatient.id);
@@ -36,7 +38,7 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
         </View>
         <TouchableOpacity 
           style={styles.addPatientBtn}
-          onPress={() => Alert.alert('New Patient', 'Pairing Code: MED-' + Math.floor(1000 + Math.random() * 9000))}
+          onPress={() => setPairModalVisible(true)}
         >
           <Ionicons name="person-add" size={18} color="#0D9488" />
         </TouchableOpacity>
@@ -103,10 +105,10 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.profileName}>{currentPatient.name}</Text>
-            <Text style={styles.profileSub}>Age: {currentPatient.age} yrs • Code: {currentPatient.code}</Text>
+            <Text style={styles.profileSub}>Age: {currentPatient.age} yrs • Pairing Code: <Text style={{ fontWeight: 'bold', color: '#0D9488' }}>{currentPatient.code}</Text></Text>
           </View>
           
-          {/* Quick Call Button */}
+          {/* Quick Direct Call Button */}
           <TouchableOpacity 
             style={styles.directCallCircle}
             onPress={() => callCaretaker(currentPatient.phone)}
@@ -130,7 +132,7 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
         <View style={styles.actionGrid}>
           <TouchableOpacity 
             style={styles.actionGridBtn}
-            onPress={() => setModalVisible(true)}
+            onPress={() => setAddMedModalVisible(true)}
           >
             <Ionicons name="add-circle" size={22} color="#0D9488" />
             <Text style={styles.actionGridText}>Add Medicine</Text>
@@ -182,7 +184,10 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
         </View>
       ))}
 
-      <AddMedicationModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+      {/* Modals */}
+      <AddMedicationModal visible={addMedModalVisible} onClose={() => setAddMedModalVisible(false)} />
+      <PairPatientModal visible={pairModalVisible} onClose={() => setPairModalVisible(false)} />
+
       <View style={{ height: 40 }} />
     </ScrollView>
   );
