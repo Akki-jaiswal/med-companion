@@ -8,6 +8,7 @@ import { MedicineDetailModal } from './MedicineDetailModal';
 
 export const PatientHomeScreen = () => {
   const { 
+    currentUser,
     medications, 
     markAsTaken, 
     setActiveAlarmMed, 
@@ -17,16 +18,19 @@ export const PatientHomeScreen = () => {
   const [selectedMed, setSelectedMed] = useState(null);
   const [largeFontMode, setLargeFontMode] = useState(false);
 
+  // Dynamic patient name
+  const patientDisplayName = currentUser?.name || 'Robert';
+
   const patientMeds = medications.filter(m => m.patientId === 'p1');
   const pendingCount = patientMeds.filter(m => m.statusToday === 'pending').length;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Patient Greeting & Status Banner */}
+      {/* Dynamic Patient Greeting & Status Banner */}
       <View style={styles.headerCard}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.welcomeText, largeFontMode && { fontSize: 26 }]}>
-            Hello, Robert 👋
+            Hello, {patientDisplayName} 👋
           </Text>
           <Text style={[styles.subText, largeFontMode && { fontSize: 16 }]}>
             {pendingCount === 0 
@@ -51,7 +55,7 @@ export const PatientHomeScreen = () => {
       {/* BIG RED SOS BUTTON */}
       <TouchableOpacity 
         style={styles.sosCard} 
-        onPress={() => sendSOSAlert('Robert', caretakerPhone)}
+        onPress={() => sendSOSAlert(patientDisplayName, caretakerPhone)}
         activeOpacity={0.85}
       >
         <View style={styles.sosIconCircle}>
@@ -108,7 +112,7 @@ export const PatientHomeScreen = () => {
                 {/* Voice Readout Button */}
                 <TouchableOpacity 
                   style={styles.cardVoiceBtn}
-                  onPress={() => speakMedicationReminder(med)}
+                  onPress={() => speakMedicationReminder(med, patientDisplayName)}
                 >
                   <Ionicons name="volume-high" size={18} color="#0D9488" />
                 </TouchableOpacity>
@@ -168,7 +172,7 @@ export const PatientHomeScreen = () => {
         );
       })}
 
-      {/* Detailed Pill Modal (from diagram: My Medicines -> Medicine Detail) */}
+      {/* Detailed Pill Modal */}
       <MedicineDetailModal
         visible={!!selectedMed}
         med={selectedMed}
@@ -176,7 +180,7 @@ export const PatientHomeScreen = () => {
         onMarkTaken={markAsTaken}
       />
 
-      <View style={{ height: 40 }} />
+      <View style={{ height: 100 }} />
     </ScrollView>
   );
 };
