@@ -38,26 +38,23 @@ const MainNavigator = () => {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Top Header & Dual Role Switcher Bar */}
+      {/* Clean Top Header & Mode Toggle */}
       <View style={styles.roleSwitchContainer}>
         <View style={styles.topInfoRow}>
-          <View style={styles.userBadge}>
-            <View style={styles.userStatusDot} />
-            <Text style={styles.userGreetingText}>
-              {currentUser?.name || 'Akshay Jaiswal'}
-            </Text>
+          <View style={styles.brandingBox}>
+            <View style={styles.appIconCircle}>
+              <Ionicons name="medical" size={16} color="#FFFFFF" />
+            </View>
+            <Text style={styles.appBrandText}>MedCompanion</Text>
           </View>
 
-          {/* Quick Login/Profile Shortcut */}
-          <TouchableOpacity 
-            style={styles.authShortcutBtn}
-            onPress={() => setAuthModalVisible(true)}
-          >
-            <Ionicons name="key-outline" size={16} color="#0D9488" />
-            <Text style={styles.authShortcutText}>Accounts</Text>
-          </TouchableOpacity>
+          <View style={styles.userStatusBadge}>
+            <View style={styles.userStatusDot} />
+            <Text style={styles.userNameText}>{currentUser?.name || 'Akshay Jaiswal'}</Text>
+          </View>
         </View>
 
+        {/* Dual Mode Switcher Pill */}
         <View style={styles.roleSwitchPill}>
           <TouchableOpacity
             style={[styles.roleBtn, userRole === 'PATIENT' && styles.roleBtnActive]}
@@ -102,16 +99,16 @@ const MainNavigator = () => {
         userRole={userRole}
       />
 
-      {/* Full-Screen Alarm Modal (Pulsing sound & countdown) */}
+      {/* Full-Screen Alarm Modal (Pulsing sound, voice TTS & countdown) */}
       <AlarmModal />
 
-      {/* Meta AI-style Slide Chatbot Modal */}
+      {/* Meta AI-style Health Chatbot Modal */}
       <AiHealthAssistantModal
         visible={aiAssistantVisible}
         onClose={() => setAiAssistantVisible(false)}
       />
 
-      {/* Authentication Modal */}
+      {/* Auth Screen Modal (Only shown if triggered from Profile) */}
       {authModalVisible && (
         <View style={StyleSheet.absoluteFill}>
           <AuthScreen onClose={() => setAuthModalVisible(false)} />
@@ -137,7 +134,7 @@ const styles = StyleSheet.create({
   },
   roleSwitchContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
@@ -146,11 +143,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  userBadge: {
+  brandingBox: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  appIconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#0D9488',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appBrandText: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#0F172A',
+    letterSpacing: 0.5,
+  },
+  userStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
     gap: 6,
   },
   userStatusDot: {
@@ -159,26 +181,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#10B981',
   },
-  userGreetingText: {
-    fontSize: 13,
+  userNameText: {
+    fontSize: 12,
     fontWeight: '700',
-    color: '#0F172A',
-  },
-  authShortcutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0FDFA',
-    borderWidth: 1,
-    borderColor: '#CCFBF1',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
-  authShortcutText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#0D9488',
+    color: '#334155',
   },
   roleSwitchPill: {
     flexDirection: 'row',
@@ -204,7 +210,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   roleBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#64748B',
   },

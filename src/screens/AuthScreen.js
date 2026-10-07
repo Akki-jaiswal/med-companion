@@ -30,7 +30,7 @@ export const AuthScreen = ({ onClose }) => {
         patientCodeToLink: role === 'CARETAKER' ? patientCodeToLink.trim() : null,
       });
 
-      Alert.alert('Registration Successful', `Welcome to MedCompanion, ${name}!`);
+      Alert.alert('Account Created', `Welcome to MedCompanion, ${name}!`);
       if (onClose) onClose();
     } else {
       if (!email.trim() || !password.trim()) {
@@ -38,22 +38,10 @@ export const AuthScreen = ({ onClose }) => {
         return;
       }
 
-      const success = loginUser(email.trim().toLowerCase(), password);
-      if (success) {
-        if (onClose) onClose();
-      } else {
-        Alert.alert('Login Failed', 'Invalid credentials or user not found. You can also use the Demo login buttons below!');
-      }
+      loginUser(email.trim().toLowerCase(), password);
+      Alert.alert('Signed In', `Welcome back!`);
+      if (onClose) onClose();
     }
-  };
-
-  const handleQuickDemo = (demoRole) => {
-    if (demoRole === 'PATIENT') {
-      loginUser('patient@demo.com', 'password', true, 'PATIENT');
-    } else {
-      loginUser('caretaker@demo.com', 'password', true, 'CARETAKER');
-    }
-    if (onClose) onClose();
   };
 
   return (
@@ -62,13 +50,20 @@ export const AuthScreen = ({ onClose }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Top Dismiss Button */}
+        {onClose && (
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <Ionicons name="close" size={24} color="#64748B" />
+          </TouchableOpacity>
+        )}
+
         {/* Top Branding */}
         <View style={styles.brandHeader}>
           <View style={styles.logoCircle}>
             <Ionicons name="medical" size={40} color="#FFFFFF" />
           </View>
           <Text style={styles.appName}>MedCompanion</Text>
-          <Text style={styles.appTagline}>Smart Adherence & Family Caretaker Network</Text>
+          <Text style={styles.appTagline}>Secure Patient & Caretaker Access</Text>
         </View>
 
         {/* Tab Switcher */}
@@ -100,7 +95,7 @@ export const AuthScreen = ({ onClose }) => {
                 <Text style={[styles.roleCardTitle, role === 'PATIENT' && styles.roleCardTitleActive]}>
                   Patient
                 </Text>
-                <Text style={styles.roleCardSub}>For elderly or taking medicines</Text>
+                <Text style={styles.roleCardSub}>For elderly taking medicines</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -111,7 +106,7 @@ export const AuthScreen = ({ onClose }) => {
                 <Text style={[styles.roleCardTitle, role === 'CARETAKER' && styles.roleCardTitleActive]}>
                   Caretaker
                 </Text>
-                <Text style={styles.roleCardSub}>For son/daughter or guardian</Text>
+                <Text style={styles.roleCardSub}>For family & guardians</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -152,7 +147,7 @@ export const AuthScreen = ({ onClose }) => {
 
           {isSignUp && (
             <>
-              <Text style={styles.fieldLabel}>Phone Number</Text>
+              <Text style={styles.fieldLabel}>Emergency Phone</Text>
               <TextInput
                 style={styles.input}
                 placeholder="+91 98765 43210"
@@ -163,7 +158,7 @@ export const AuthScreen = ({ onClose }) => {
 
               {role === 'CARETAKER' && (
                 <>
-                  <Text style={styles.fieldLabel}>Link Patient Code (Optional)</Text>
+                  <Text style={styles.fieldLabel}>Patient Pairing Code (Optional)</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="e.g. MED-7821"
@@ -179,35 +174,13 @@ export const AuthScreen = ({ onClose }) => {
           {/* Submit Button */}
           <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
             <Text style={styles.submitBtnText}>
-              {isSignUp ? 'Complete Registration' : 'Sign In to Account'}
+              {isSignUp ? 'Complete Registration' : 'Sign In'}
             </Text>
             <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
-        {/* Quick Demo Logins for Lab Viva */}
-        <View style={styles.demoSection}>
-          <Text style={styles.demoSectionTitle}>⚡ Quick 1-Tap Lab Demo Login</Text>
-          <View style={styles.demoBtnRow}>
-            <TouchableOpacity 
-              style={[styles.demoBtn, { backgroundColor: '#F0FDFA', borderColor: '#CCFBF1' }]} 
-              onPress={() => handleQuickDemo('PATIENT')}
-            >
-              <Ionicons name="person-circle" size={18} color="#0D9488" />
-              <Text style={[styles.demoBtnText, { color: '#0D9488' }]}>Demo Patient</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.demoBtn, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]} 
-              onPress={() => handleQuickDemo('CARETAKER')}
-            >
-              <Ionicons name="shield-checkmark" size={18} color="#4F46E5" />
-              <Text style={[styles.demoBtnText, { color: '#4F46E5' }]}>Demo Caretaker</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={{ height: 30 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -222,14 +195,24 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingTop: Platform.OS === 'android' ? 44 : 20,
   },
+  closeBtn: {
+    alignSelf: 'flex-end',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
   brandHeader: {
     alignItems: 'center',
     marginBottom: 24,
   },
   logoCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: '#0D9488',
     alignItems: 'center',
     justifyContent: 'center',
@@ -241,7 +224,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   appName: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '900',
     color: '#0F172A',
     letterSpacing: 0.5,
@@ -365,35 +348,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
-  },
-  demoSection: {
-    marginTop: 24,
-    alignItems: 'center',
-  },
-  demoSectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748B',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-  },
-  demoBtnRow: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  demoBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 6,
-  },
-  demoBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
   },
 });
