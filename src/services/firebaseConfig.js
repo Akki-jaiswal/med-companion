@@ -15,24 +15,22 @@ import {
 } from 'firebase/firestore';
 
 // ----------------------------------------------------------------------
-// 100% FREE FIREBASE SPARK TIER CONFIGURATION
-// ----------------------------------------------------------------------
-// When you and your friend create a project at https://console.firebase.google.com,
-// paste your credentials below. Until then, our Smart Cloud Sync Bridge
-// simulates real-time cloud sync so your app never crashes!
+// SECURE ENVIRONMENT-BASED FIREBASE CONFIGURATION
+// Keys are loaded from .env.local via process.env.EXPO_PUBLIC_*
+// Never commit raw API keys to public repositories!
 // ----------------------------------------------------------------------
 
 const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "medcompanion-dev.firebaseapp.com",
-  projectId: "medcompanion-dev",
-  storageBucket: "medcompanion-dev.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef1234567890"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "YOUR_FIREBASE_API_KEY",
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "medcompanion-66482.firebaseapp.com",
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "medcompanion-66482",
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "medcompanion-66482.firebasestorage.app",
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "836610166798",
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:836610166798:web:bb7326e5d5d6a0a7a42c5f"
 };
 
 export const isFirebaseConfigured = () => {
-  return firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY";
+  return firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY";
 };
 
 let app = null;
