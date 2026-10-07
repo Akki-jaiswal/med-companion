@@ -5,6 +5,14 @@ import {
   scheduleMedicationAlarm, 
   triggerCaretakerPushAlert 
 } from '../services/notificationService';
+import {
+  subscribeToPatientMedications,
+  updateMedicationStatusInCloud,
+  addMedicationToCloud,
+  subscribeToEscalationAlerts,
+  triggerCloudEscalation,
+  findPatientByCodeInCloud
+} from '../services/firestoreService';
 
 const AppContext = createContext();
 
@@ -91,13 +99,13 @@ export const AppProvider = ({ children }) => {
 
   // Adherence History (Logs past week medication adherence)
   const [adherenceHistory, setAdherenceHistory] = useState([
+    { date: '2026-10-06', pillName: 'Amlodipine', time: '08:00 AM', status: 'Taken', onTime: true },
+    { date: '2026-10-06', pillName: 'Metformin', time: '01:30 PM', status: 'Taken', onTime: true },
+    { date: '2026-10-06', pillName: 'Atorvastatin', time: '08:30 PM', status: 'Missed', onTime: false },
+    { date: '2026-10-05', pillName: 'Amlodipine', time: '08:00 AM', status: 'Taken', onTime: true },
+    { date: '2026-10-05', pillName: 'Metformin', time: '01:30 PM', status: 'Taken', onTime: true },
+    { date: '2026-10-05', pillName: 'Atorvastatin', time: '08:30 PM', status: 'Taken', onTime: true },
     { date: '2026-10-04', pillName: 'Amlodipine', time: '08:00 AM', status: 'Taken', onTime: true },
-    { date: '2026-10-04', pillName: 'Metformin', time: '01:30 PM', status: 'Taken', onTime: true },
-    { date: '2026-10-04', pillName: 'Atorvastatin', time: '08:30 PM', status: 'Missed', onTime: false },
-    { date: '2026-10-03', pillName: 'Amlodipine', time: '08:00 AM', status: 'Taken', onTime: true },
-    { date: '2026-10-03', pillName: 'Metformin', time: '01:30 PM', status: 'Taken', onTime: true },
-    { date: '2026-10-03', pillName: 'Atorvastatin', time: '08:30 PM', status: 'Taken', onTime: true },
-    { date: '2026-10-02', pillName: 'Amlodipine', time: '08:00 AM', status: 'Taken', onTime: true },
   ]);
 
   // Full-screen alarm simulation state
@@ -129,7 +137,29 @@ export const AppProvider = ({ children }) => {
     loadSavedData();
   }, []);
 
-  // Save medications whenever changed
+  // Real-Time Cloud Listeners (Subscribes to Firestore when connected)
+  useEffect(() => {
+    // 1. Subscribe to patient medications in real-time
+    const unsubscribeMeds = subscribeToPatientMedications(selectedPatientId, (cloudMeds) => {
+      if (cloudMeds && cloudMeds.length > 0) {
+        setMedications(cloudMeds);
+      }
+    });
+
+    // 2. Subscribe to remote escalations for caretaker
+    const unsubscribeEscalations = subscribeToEscalationAlerts(selectedPatientId, (cloudAlert) => {
+      if (cloudAlert) {
+        setEscalationAlert(cloudAlert);
+      }
+    });
+
+    return () => {
+      unsubscribeMeds();
+      unsubscribeEscalations();
+    };
+  }, [selectedPatientId]);
+
+  // Save medications locally and to Cloud
   const saveMedications = async (updatedMeds) => {
     setMedications(updatedMeds);
     try {
@@ -153,31 +183,13 @@ export const AppProvider = ({ children }) => {
     setUserRole(newUser.role);
     await AsyncStorage.setItem('@med_user', JSON.stringify(newUser));
 
-    // If caretaker entered a code to pair on signup
     if (userData.patientCodeToLink) {
       pairPatientByCode(userData.patientCodeToLink, 'Monitored Patient');
     }
   };
 
   // Login User
-  const loginUser = async (email, password, isDemo = false, demoRole = 'PATIENT') => {
-    if (isDemo) {
-      const demoUser = {
-        id: 'u_' + Date.now(),
-        name: demoRole === 'PATIENT' ? 'Akshay Jaiswal' : 'Akshita Bhati',
-        email: demoRole === 'PATIENT' ? 'akshay@medcompanion.com' : 'akshita@medcompanion.com',
-        role: demoRole,
-        phone: '+919876543210',
-        pairingCode: demoRole === 'PATIENT' ? 'MED-7821' : null,
-        isAuthenticated: true,
-      };
-      setCurrentUser(demoUser);
-      setUserRole(demoRole);
-      await AsyncStorage.setItem('@med_user', JSON.stringify(demoUser));
-      return true;
-    }
-
-    // Default match
+  const loginUser = async (email, password) => {
     const userObj = {
       ...currentUser,
       email,
@@ -201,8 +213,8 @@ export const AppProvider = ({ children }) => {
     setCurrentUser(prev => ({ ...prev, role }));
   };
 
-  // Mark medicine as Taken
-  const markAsTaken = (medId) => {
+  // Mark medicine as Taken (Syncs with Cloud Firestore)
+  const markAsTaken = async (medId) => {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const todayStr = now.toISOString().split('T')[0];
@@ -220,22 +232,24 @@ export const AppProvider = ({ children }) => {
 
     saveMedications(updated);
     setActiveAlarmMed(null);
+
+    // Sync to Cloud Firestore
+    await updateMedicationStatusInCloud(medId, 'taken', timeStr);
   };
 
   // Patient snoozes alarm
   const snoozeAlarm = (medId) => {
     setActiveAlarmMed(null);
-    scheduleMedicationAlarm(activeAlarmMed, 10 * 60); // Reschedule in 10 minutes!
-    alert('Alarm snoozed for 10 minutes! Background notification set.');
+    scheduleMedicationAlarm(activeAlarmMed, 10 * 60);
+    alert('Alarm snoozed for 10 minutes!');
   };
 
-  // Simulate missed dose -> Triggers Escalation to Caretaker & Push Notification
-  const triggerMissedEscalation = (med) => {
+  // Trigger Missed Escalation (Syncs with Cloud Firestore & alerts Caretaker)
+  const triggerMissedEscalation = async (med) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const updated = medications.map(m => m.id === med.id ? { ...m, statusToday: 'missed' } : m);
     saveMedications(updated);
 
-    // Record missed history
     setAdherenceHistory(prev => [
       { date: todayStr, pillName: med.name, time: med.time, status: 'Missed', onTime: false },
       ...prev
@@ -244,6 +258,7 @@ export const AppProvider = ({ children }) => {
     setActiveAlarmMed(null);
 
     const alertPayload = {
+      patientId: selectedPatientId,
       patientName: currentUser?.name || 'Dad (Robert)',
       pillName: med.name,
       scheduledTime: med.time,
@@ -253,12 +268,16 @@ export const AppProvider = ({ children }) => {
 
     setEscalationAlert(alertPayload);
 
-    // Trigger REAL System Background Notification for Caretaker!
+    // Sync to Cloud Firestore
+    await triggerCloudEscalation(alertPayload);
+    await updateMedicationStatusInCloud(med.id, 'missed');
+
+    // Trigger local push notification
     triggerCaretakerPushAlert(alertPayload.patientName, alertPayload.pillName, alertPayload.scheduledTime);
   };
 
-  // Add new medicine (from Caretaker) & schedule local background alarm!
-  const addMedication = (newMed) => {
+  // Add new medicine (from Caretaker) -> Writes to Cloud Firestore!
+  const addMedication = async (newMed) => {
     const item = {
       ...newMed,
       id: 'm_' + Date.now(),
@@ -268,7 +287,10 @@ export const AppProvider = ({ children }) => {
     };
     saveMedications([...medications, item]);
 
-    // Schedule background alarm (60s if "Test in 1 Min", or regular)
+    // Write to Cloud Firestore
+    await addMedicationToCloud(item);
+
+    // Schedule background alarm
     const delay = newMed.time === 'In 1 Minute' ? 60 : 3600;
     scheduleMedicationAlarm(item, delay);
   };
@@ -287,8 +309,17 @@ export const AppProvider = ({ children }) => {
     await AsyncStorage.setItem('@patients', JSON.stringify(updated));
   };
 
-  // Dynamic Pairing by 6-digit Code
-  const pairPatientByCode = (code, fallbackName = 'Linked Patient') => {
+  // Dynamic Pairing by 6-digit Code (Checks Cloud + Local)
+  const pairPatientByCode = async (code, fallbackName = 'Linked Patient') => {
+    // 1. Check Cloud Firestore first
+    const cloudPatient = await findPatientByCodeInCloud(code);
+    if (cloudPatient) {
+      setPatients(prev => [...prev.filter(p => p.id !== cloudPatient.id), cloudPatient]);
+      setSelectedPatientId(cloudPatient.id);
+      return cloudPatient;
+    }
+
+    // 2. Check Local list
     const existing = patients.find(p => p.code.toUpperCase() === code.toUpperCase());
     if (existing) {
       setSelectedPatientId(existing.id);

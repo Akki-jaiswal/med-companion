@@ -1,41 +1,67 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, getDocs, onSnapshot, updateDoc } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  onSnapshot, 
+  updateDoc, 
+  addDoc, 
+  query, 
+  where,
+  orderBy 
+} from 'firebase/firestore';
 
 // ----------------------------------------------------------------------
-// 100% FREE FIREBASE SPARK CONFIGURATION
+// 100% FREE FIREBASE SPARK TIER CONFIGURATION
 // ----------------------------------------------------------------------
-// You and your partner can create a free project at https://console.firebase.google.com
-// Paste your credentials below when ready. The app will work seamlessly
-// with local cache until you paste the cloud credentials!
+// When you and your friend create a project at https://console.firebase.google.com,
+// paste your credentials below. Until then, our Smart Cloud Sync Bridge
+// simulates real-time cloud sync so your app never crashes!
 // ----------------------------------------------------------------------
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "medcompanion-app.firebaseapp.com",
-  projectId: "medcompanion-app",
-  storageBucket: "medcompanion-app.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456"
+  apiKey: "YOUR_FIREBASE_API_KEY",
+  authDomain: "medcompanion-dev.firebaseapp.com",
+  projectId: "medcompanion-dev",
+  storageBucket: "medcompanion-dev.appspot.com",
+  messagingSenderId: "123456789012",
+  appId: "1:123456789012:web:abcdef1234567890"
 };
 
-// Check if credentials are placeholders or real
 export const isFirebaseConfigured = () => {
-  return firebaseConfig.apiKey !== "YOUR_API_KEY";
+  return firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY";
 };
 
-let app;
-let db;
+let app = null;
+let db = null;
 
 try {
   if (isFirebaseConfigured()) {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     db = getFirestore(app);
-    console.log("🔥 Firebase Cloud Firestore Connected Successfully!");
+    console.log("🔥 Connected to Google Cloud Firestore Live Backend!");
   } else {
-    console.log("⚡ Running in Local-Sync Mode (Ready for Firebase Cloud keys anytime)");
+    console.log("⚡ Backend running in Cloud-Ready Bridge mode.");
   }
 } catch (error) {
-  console.log("Firebase init note:", error.message);
+  console.log("Firebase Init Note:", error.message);
 }
 
-export { db };
+export { 
+  app, 
+  db, 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  onSnapshot, 
+  updateDoc, 
+  addDoc, 
+  query, 
+  where, 
+  orderBy 
+};
