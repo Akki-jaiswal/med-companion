@@ -11,7 +11,6 @@ export const PatientHomeScreen = () => {
     currentUser,
     medications, 
     markAsTaken, 
-    setActiveAlarmMed, 
     caretakerPhone 
   } = useApp();
 
@@ -140,26 +139,15 @@ export const PatientHomeScreen = () => {
               {/* Status and Action Buttons */}
               <View style={styles.cardActions}>
                 {!isTaken ? (
-                  <>
-                    <TouchableOpacity 
-                      style={styles.takeDoseBtn}
-                      onPress={() => markAsTaken(med.id)}
-                    >
-                      <Ionicons name="checkmark-sharp" size={18} color="#FFFFFF" />
-                      <Text style={[styles.takeDoseBtnText, largeFontMode && { fontSize: 16 }]}>
-                        Take Dose
-                      </Text>
-                    </TouchableOpacity>
-
-                    {/* Simulator Alarm Trigger for Demo */}
-                    <TouchableOpacity 
-                      style={styles.testAlarmBtn}
-                      onPress={() => setActiveAlarmMed(med)}
-                    >
-                      <Ionicons name="notifications" size={15} color="#0D9488" />
-                      <Text style={styles.testAlarmText}>Alarm</Text>
-                    </TouchableOpacity>
-                  </>
+                  <TouchableOpacity 
+                    style={styles.takeDoseBtn}
+                    onPress={() => markAsTaken(med.id)}
+                  >
+                    <Ionicons name="checkmark-sharp" size={18} color="#FFFFFF" />
+                    <Text style={[styles.takeDoseBtnText, largeFontMode && { fontSize: 16 }]}>
+                      Take Dose
+                    </Text>
+                  </TouchableOpacity>
                 ) : (
                   <View style={styles.statusBadgeTakenFull}>
                     <Ionicons name="checkmark-done" size={16} color="#166534" />
@@ -377,7 +365,6 @@ const styles = StyleSheet.create({
   cardActions: {
     flexDirection: 'row',
     marginTop: 14,
-    gap: 10,
   },
   takeDoseBtn: {
     flex: 1,
@@ -385,30 +372,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#0D9488',
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
     gap: 6,
+    shadowColor: '#0D9488',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   takeDoseBtnText: {
     color: '#FFFFFF',
     fontWeight: '700',
-    fontSize: 14,
-  },
-  testAlarmBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F0FDFA',
-    borderWidth: 1,
-    borderColor: '#CCFBF1',
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    gap: 4,
-  },
-  testAlarmText: {
-    color: '#0D9488',
-    fontWeight: '700',
-    fontSize: 13,
+    fontSize: 15,
   },
   statusBadgeTakenFull: {
     flex: 1,
@@ -416,13 +392,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#DCFCE7',
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
     gap: 6,
   },
   statusTextTaken: {
     color: '#166534',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
   },
 });
