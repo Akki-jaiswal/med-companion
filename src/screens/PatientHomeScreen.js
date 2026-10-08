@@ -18,9 +18,9 @@ export const PatientHomeScreen = () => {
   const [largeFontMode, setLargeFontMode] = useState(false);
 
   // Dynamic patient name
-  const patientDisplayName = currentUser?.name || 'Robert';
+  const patientDisplayName = currentUser?.name || 'Patient';
 
-  const patientMeds = medications.filter(m => m.patientId === 'p1');
+  const patientMeds = medications.filter(m => !m.patientId || m.patientId === 'p1' || m.patientId === currentUser?.id);
   const pendingCount = patientMeds.filter(m => m.statusToday === 'pending').length;
 
   return (

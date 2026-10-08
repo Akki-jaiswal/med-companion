@@ -119,7 +119,7 @@ export const AuthScreen = ({ onClose }) => {
               <Text style={styles.fieldLabel}>Full Name</Text>
               <TextInput
                 style={styles.input}
-                placeholder="e.g. Akshay Jaiswal"
+                placeholder="Enter your name"
                 value={name}
                 onChangeText={setName}
               />

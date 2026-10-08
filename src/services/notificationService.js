@@ -80,24 +80,60 @@ export const scheduleMedicationAlarm = async (med, delaySeconds = 60) => {
   try {
     if (!Notifications?.scheduleNotificationAsync) return null;
 
+    const safeSeconds = Math.max(1, Math.round(delaySeconds));
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: `⏰ Upcoming Medicine: ${med.name}`,
-        body: `Scheduled for ${med.time} (${med.mealCondition}). Dosage: ${med.dosage}.`,
+        title: `⏰ TIME FOR MEDICATION: ${med.name}`,
+        body: `Dosage: ${med.dosage} (${med.mealCondition}). Please take it now!`,
         sound: 'default',
         priority: Notifications.AndroidNotificationPriority?.MAX,
         channelId: 'medication-alarms',
         data: { medId: med.id, type: 'medication_alarm' },
       },
       trigger: {
-        seconds: delaySeconds,
-        channelId: 'medication-alarms',
+        seconds: safeSeconds,
       },
     });
     return id;
   } catch (error) {
     console.log('scheduleMedicationAlarm note:', error.message);
     return null;
+  }
+};
+
+// Schedule Caretaker Escalation Alert to fire automatically at delaySeconds if not cancelled
+export const scheduleCaretakerEscalationNotification = async (patientName, pillName, scheduledTime, delaySeconds = 60) => {
+  try {
+    if (!Notifications?.scheduleNotificationAsync) return null;
+
+    const safeSeconds = Math.max(1, Math.round(delaySeconds));
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `🚨 CARETAKER ALERT: ${patientName} Missed Pill!`,
+        body: `${patientName} did not acknowledge ${pillName} scheduled at ${scheduledTime}. Action required!`,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority?.MAX,
+        channelId: 'medication-alarms',
+        data: { type: 'escalation_alert', pillName },
+      },
+      trigger: {
+        seconds: safeSeconds,
+      },
+    });
+    return id;
+  } catch (error) {
+    console.log('scheduleCaretakerEscalationNotification note:', error.message);
+    return null;
+  }
+};
+
+// Cancel a scheduled notification (e.g. when patient marks pill as Taken)
+export const cancelScheduledNotification = async (notificationId) => {
+  try {
+    if (!notificationId || !Notifications?.cancelScheduledNotificationAsync) return;
+    await Notifications.cancelScheduledNotificationAsync(notificationId);
+  } catch (e) {
+    console.log('cancelScheduledNotification note:', e.message);
   }
 };
 

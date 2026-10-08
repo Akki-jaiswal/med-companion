@@ -1,9 +1,12 @@
 import React, { createContext, useState, useEffect, useRef, useContext } from 'react';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   registerForPushNotificationsAsync, 
   scheduleMedicationAlarm, 
   fireInstantMedicationNotification,
+  scheduleCaretakerEscalationNotification,
+  cancelScheduledNotification,
   triggerCaretakerPushAlert 
 } from '../services/notificationService';
 import {
@@ -22,7 +25,7 @@ const parseTimeToTimestamp = (timeStr, createdAt = Date.now()) => {
   if (!timeStr) return Date.now() + 60000;
 
   if (timeStr.toLowerCase().includes('1 min') || timeStr.toLowerCase().includes('in 1 minute')) {
-    return createdAt + 60 * 1000; // Exactly 60 seconds from creation!
+    return createdAt + 60 * 1000;
   }
 
   try {
@@ -38,7 +41,6 @@ const parseTimeToTimestamp = (timeStr, createdAt = Date.now()) => {
     const target = new Date();
     target.setHours(hours, minutes, 0, 0);
 
-    // If time already passed earlier today, set for demo test in 1 min or keep
     return target.getTime();
   } catch (e) {
     return Date.now() + 60000;
@@ -46,42 +48,25 @@ const parseTimeToTimestamp = (timeStr, createdAt = Date.now()) => {
 };
 
 export const AppProvider = ({ children }) => {
-  // Current Logged-in User Profile
-  const [currentUser, setCurrentUser] = useState({
-    id: 'u1',
-    name: 'Akshay Jaiswal',
-    email: 'akshay@medcompanion.com',
-    role: 'PATIENT',
-    phone: '+919876543210',
-    pairingCode: 'MED-7821',
-    isAuthenticated: true,
-  });
-
+  // Current Logged-in User Profile (Dynamic, starts with active user or null)
+  const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('PATIENT');
   const [selectedPatientId, setSelectedPatientId] = useState('p1');
   const [caretakerPhone, setCaretakerPhone] = useState('+919876543210');
 
-  // Patients list
+  // Dynamic Patients list
   const [patients, setPatients] = useState([
     {
       id: 'p1',
-      name: 'Dad (Robert)',
+      name: 'My Patient',
       age: 68,
       code: 'MED-7821',
       phone: '+919876543210',
-      relation: 'Father',
-    },
-    {
-      id: 'p2',
-      name: 'Grandma (Mary)',
-      age: 82,
-      code: 'MED-4390',
-      phone: '+919812345678',
-      relation: 'Grandmother',
+      relation: 'Family Member',
     }
   ]);
 
-  // Initial Seed Medications with realistic timestamps
+  // Dynamic Medications list
   const [medications, setMedications] = useState([
     {
       id: 'm1',
@@ -102,41 +87,70 @@ export const AppProvider = ({ children }) => {
       name: 'Metformin (Sugar)',
       dosage: '500 mg - 1 Tablet',
       time: 'In 1 Minute',
-      targetTimestamp: Date.now() + 45 * 1000, // Will ring automatically in 45 seconds!
+      targetTimestamp: Date.now() + 50 * 1000, // Rings automatically 50s from app launch
       mealCondition: 'After Lunch',
       color: '#EF4444',
       shape: 'capsule',
-      statusToday: 'pending',
-      takenAt: null,
-    },
-    {
-      id: 'm3',
-      patientId: 'p1',
-      name: 'Atorvastatin (Cholesterol)',
-      dosage: '10 mg - 1 Tablet',
-      time: '08:30 PM',
-      targetTimestamp: parseTimeToTimestamp('08:30 PM'),
-      mealCondition: 'After Dinner',
-      color: '#10B981',
-      shape: 'square',
       statusToday: 'pending',
       takenAt: null,
     }
   ]);
 
   const [adherenceHistory, setAdherenceHistory] = useState([
-    { date: '2026-10-07', pillName: 'Amlodipine', time: '08:00 AM', status: 'Taken', onTime: true },
-    { date: '2026-10-06', pillName: 'Metformin', time: '01:30 PM', status: 'Taken', onTime: true },
-    { date: '2026-10-06', pillName: 'Atorvastatin', time: '08:30 PM', status: 'Missed', onTime: false },
+    { date: new Date().toISOString().split('T')[0], pillName: 'Amlodipine', time: '08:00 AM', status: 'Taken', onTime: true }
   ]);
 
   const [activeAlarmMed, setActiveAlarmMed] = useState(null);
   const [escalationAlert, setEscalationAlert] = useState(null);
 
-  // Track which alarms have already fired automatically so they don't loop
+  // Track fired alarms so each alarm only rings once per scheduled time
   const firedAlarmIdsRef = useRef(new Set());
+  const pendingEscalationsRef = useRef({});
 
-  // Request system notification permissions on app launch
+  // Check pending alarms when app resumes from background or on clock tick
+  const checkPendingAlarms = async () => {
+    const now = Date.now();
+    for (const med of medications) {
+      if (med.statusToday === 'pending' && med.targetTimestamp) {
+        // Case A: User was away from app and >60s passed since scheduled time without acknowledgement
+        if (now >= med.targetTimestamp + 60000 && !firedAlarmIdsRef.current.has(med.id)) {
+          firedAlarmIdsRef.current.add(med.id);
+          triggerMissedEscalation(med);
+        }
+        // Case B: Alarm time has arrived (within current 60s active countdown window)
+        else if (now >= med.targetTimestamp && !firedAlarmIdsRef.current.has(med.id)) {
+          firedAlarmIdsRef.current.add(med.id);
+          setActiveAlarmMed(med);
+          fireInstantMedicationNotification(med);
+
+          // Schedule background OS notification for Caretaker in 60s in case user minimizes app
+          const patientName = currentUser?.name || 'Patient';
+          const notifId = await scheduleCaretakerEscalationNotification(
+            patientName,
+            med.name,
+            med.time,
+            60
+          );
+          if (notifId) {
+            pendingEscalationsRef.current[med.id] = notifId;
+          }
+        }
+      }
+    }
+  };
+
+  // AppState listener: catches alarms when user switches back from home screen / background!
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        checkPendingAlarms();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [medications]);
+
+  // Request system notification permissions & load storage on launch
   useEffect(() => {
     registerForPushNotificationsAsync();
 
@@ -147,6 +161,18 @@ export const AppProvider = ({ children }) => {
           const userObj = JSON.parse(savedUser);
           setCurrentUser(userObj);
           setUserRole(userObj.role);
+        } else {
+          // Default initial profile if user hasn't registered yet
+          const defaultUser = {
+            id: 'u_default',
+            name: 'Patient User',
+            email: 'user@medcompanion.com',
+            role: 'PATIENT',
+            phone: '+919876543210',
+            pairingCode: 'MED-7821',
+            isAuthenticated: true,
+          };
+          setCurrentUser(defaultUser);
         }
 
         const savedMeds = await AsyncStorage.getItem('@medications');
@@ -161,35 +187,11 @@ export const AppProvider = ({ children }) => {
     loadSavedData();
   }, []);
 
-  // -------------------------------------------------------------
-  // AUTOMATED REAL-TIME CLOCK ENGINE (NO MANUAL CLICKS NEEDED!)
-  // Checks every second if any medicine's time has arrived
-  // -------------------------------------------------------------
+  // Real-Time Clock Engine: Runs every second
   useEffect(() => {
     const clockInterval = setInterval(() => {
-      const now = Date.now();
-
-      medications.forEach((med) => {
-        // If medicine is pending, has a target timestamp, and time has arrived
-        if (
-          med.statusToday === 'pending' &&
-          med.targetTimestamp &&
-          now >= med.targetTimestamp &&
-          !firedAlarmIdsRef.current.has(med.id)
-        ) {
-          console.log(`⏰ [ALARM AUTO-FIRED] Time reached for: ${med.name}`);
-          
-          // Mark as fired so it doesn't repeatedly trigger
-          firedAlarmIdsRef.current.add(med.id);
-
-          // 1. AUTOMATICALLY POP UP THE FULL SCREEN ALARM
-          setActiveAlarmMed(med);
-
-          // 2. AUTOMATICALLY TRIGGER ANDROID SYSTEM NOTIFICATION
-          fireInstantMedicationNotification(med);
-        }
-      });
-    }, 1500); // Check every 1.5 seconds
+      checkPendingAlarms();
+    }, 1500);
 
     return () => clearInterval(clockInterval);
   }, [medications]);
@@ -223,6 +225,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // Register New User (Dynamic Name & Code)
   const registerUser = async (userData) => {
     const code = userData.role === 'PATIENT' ? 'MED-' + Math.floor(1000 + Math.random() * 9000) : null;
     const newUser = {
@@ -253,18 +256,24 @@ export const AppProvider = ({ children }) => {
   };
 
   const logoutUser = async () => {
-    const loggedOut = { ...currentUser, isAuthenticated: false };
-    setCurrentUser(loggedOut);
+    setCurrentUser(null);
     await AsyncStorage.removeItem('@med_user');
   };
 
   const handleSetRole = (role) => {
     setUserRole(role);
-    setCurrentUser(prev => ({ ...prev, role }));
+    setCurrentUser(prev => prev ? ({ ...prev, role }) : null);
   };
 
   // Mark medicine as Taken
   const markAsTaken = async (medId) => {
+    // Cancel the pending Caretaker Escalation notification because user took the pill!
+    const pendingNotifId = pendingEscalationsRef.current[medId];
+    if (pendingNotifId) {
+      cancelScheduledNotification(pendingNotifId);
+      delete pendingEscalationsRef.current[medId];
+    }
+
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const todayStr = now.toISOString().split('T')[0];
@@ -288,8 +297,14 @@ export const AppProvider = ({ children }) => {
 
   // Patient snoozes alarm
   const snoozeAlarm = (medId) => {
+    // Cancel any scheduled escalation for this round
+    const pendingNotifId = pendingEscalationsRef.current[medId];
+    if (pendingNotifId) {
+      cancelScheduledNotification(pendingNotifId);
+      delete pendingEscalationsRef.current[medId];
+    }
+
     setActiveAlarmMed(null);
-    // Automatically reschedule to ring again in 10 minutes (or 60s for demo)
     const newTarget = Date.now() + 60 * 1000;
     firedAlarmIdsRef.current.delete(medId);
 
@@ -302,6 +317,11 @@ export const AppProvider = ({ children }) => {
 
   // Trigger Missed Escalation -> FIRES REAL ANDROID NOTIFICATION TRAY ALERT!
   const triggerMissedEscalation = async (med) => {
+    const pendingNotifId = pendingEscalationsRef.current[med.id];
+    if (pendingNotifId) {
+      delete pendingEscalationsRef.current[med.id];
+    }
+
     const todayStr = new Date().toISOString().split('T')[0];
     const updated = medications.map(m => m.id === med.id ? { ...m, statusToday: 'missed' } : m);
     saveMedications(updated);
@@ -315,7 +335,7 @@ export const AppProvider = ({ children }) => {
 
     const alertPayload = {
       patientId: selectedPatientId,
-      patientName: currentUser?.name || 'Dad (Robert)',
+      patientName: currentUser?.name || 'Patient',
       pillName: med.name,
       scheduledTime: med.time,
       timestamp: new Date().toLocaleTimeString(),
@@ -350,15 +370,25 @@ export const AppProvider = ({ children }) => {
       takenAt: null,
     };
 
-    // Remove from fired list so the new schedule triggers automatically
     firedAlarmIdsRef.current.delete(item.id);
 
     saveMedications([...medications, item]);
     await addMedicationToCloud(item);
 
-    // Schedule background notification
     const delay = Math.max(1, Math.round((targetTimestamp - now) / 1000));
     scheduleMedicationAlarm(item, delay);
+
+    // Also schedule Caretaker background escalation notification at delay + 60s
+    const patientName = currentUser?.name || 'Patient';
+    const escId = await scheduleCaretakerEscalationNotification(
+      patientName,
+      item.name,
+      item.time,
+      delay + 60
+    );
+    if (escId) {
+      pendingEscalationsRef.current[item.id] = escId;
+    }
   };
 
   // Add new patient

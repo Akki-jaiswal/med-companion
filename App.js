@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, StatusBar, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, StatusBar, Platform, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as NavigationBar from 'expo-navigation-bar';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { PatientHomeScreen } from './src/screens/PatientHomeScreen';
 import { CaretakerDashboardScreen } from './src/screens/CaretakerDashboardScreen';
@@ -18,6 +19,30 @@ const MainNavigator = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [aiAssistantVisible, setAiAssistantVisible] = useState(false);
+
+  // Enforce Android Sticky-Immersive Mode (hides the 3-button navigation bar ||| O < automatically)
+  useEffect(() => {
+    const applyStickyImmersive = async () => {
+      if (Platform.OS === 'android') {
+        try {
+          await NavigationBar.setVisibilityAsync('hidden');
+          await NavigationBar.setBehaviorAsync('overlay-swipe');
+        } catch (e) {
+          console.log('NavigationBar note:', e.message);
+        }
+      }
+    };
+
+    applyStickyImmersive();
+
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        applyStickyImmersive();
+      }
+    });
+
+    return () => sub.remove();
+  }, []);
 
   const renderScreen = () => {
     switch (activeTab) {
@@ -50,7 +75,7 @@ const MainNavigator = () => {
 
           <View style={styles.userStatusBadge}>
             <View style={styles.userStatusDot} />
-            <Text style={styles.userNameText}>{currentUser?.name || 'Akshay Jaiswal'}</Text>
+            <Text style={styles.userNameText}>{currentUser?.name || 'Patient'}</Text>
           </View>
         </View>
 

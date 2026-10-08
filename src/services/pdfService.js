@@ -115,7 +115,7 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
 
         <div class="info-box">
           <div>
-            <strong>Patient Name:</strong> ${patient ? patient.name : 'Robert'}<br>
+            <strong>Patient Name:</strong> ${patient ? patient.name : 'Primary Patient'}<br>
             <strong>Patient ID:</strong> ${patient ? patient.code : 'MED-7821'}<br>
             <strong>Age:</strong> ${patient ? patient.age : 68} Years
           </div>

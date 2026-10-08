@@ -27,8 +27,8 @@ export const ProfileScreen = ({ onOpenAuth }) => {
             color="#FFFFFF" 
           />
         </View>
-        <Text style={styles.userName}>{currentUser?.name || 'Robert Jaiswal'}</Text>
-        <Text style={styles.userEmail}>{currentUser?.email || 'robert@medcompanion.com'}</Text>
+        <Text style={styles.userName}>{currentUser?.name || 'User Profile'}</Text>
+        <Text style={styles.userEmail}>{currentUser?.email || 'user@medcompanion.com'}</Text>
 
         <View style={[styles.roleBadge, userRole === 'CARETAKER' && styles.roleBadgeCaretaker]}>
           <Text style={[styles.roleBadgeText, userRole === 'CARETAKER' && styles.roleBadgeTextCaretaker]}>

@@ -1,8 +1,9 @@
 import * as Speech from 'expo-speech';
 
-export const speakMedicationReminder = (med, patientName = 'Robert') => {
+export const speakMedicationReminder = (med, patientName = 'Patient') => {
   if (!med) return;
-  const message = `Attention ${patientName}. It is time for your medication: ${med.name}. Dosage is ${med.dosage}. Please take it ${med.mealCondition}.`;
+  const name = patientName || 'Patient';
+  const message = `Attention ${name}. It is time for your medication: ${med.name}. Dosage is ${med.dosage}. Please take it ${med.mealCondition}.`;
   
   Speech.stop();
   Speech.speak(message, {

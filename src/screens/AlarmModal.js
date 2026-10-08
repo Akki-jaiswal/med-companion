@@ -1,20 +1,26 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Animated, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { speakMedicationReminder, stopSpeech } from '../services/voiceService';
 
 export const AlarmModal = () => {
-  const { activeAlarmMed, markAsTaken, snoozeAlarm, triggerMissedEscalation } = useApp();
+  const { activeAlarmMed, markAsTaken, snoozeAlarm, triggerMissedEscalation, currentUser } = useApp();
   const [pulseAnim] = useState(new Animated.Value(1));
   const [isSpeaking, setIsSpeaking] = useState(true);
   
-  // 60-second countdown before auto-escalating to Caretaker!
+  // 60-second countdown based on actual timestamp (will NEVER freeze in background!)
   const [secondsRemaining, setSecondsRemaining] = useState(60);
   const timerRef = useRef(null);
+  const deadlineRef = useRef(null);
 
+  const patientName = currentUser?.name || 'Patient';
+
+  // Alarm appearance effect
   useEffect(() => {
     if (activeAlarmMed) {
+      // Set fixed 60-second deadline from now
+      deadlineRef.current = Date.now() + 60 * 1000;
       setSecondsRemaining(60);
 
       // Start pulsing animation
@@ -34,21 +40,15 @@ export const AlarmModal = () => {
       ).start();
 
       // Speak Reminder out loud
-      speakMedicationReminder(activeAlarmMed, 'Robert');
+      speakMedicationReminder(activeAlarmMed, patientName);
       setIsSpeaking(true);
 
-      // Start Countdown Timer
+      // Ticking timer computing from real-time deadline
       timerRef.current = setInterval(() => {
-        setSecondsRemaining((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            stopSpeech();
-            triggerMissedEscalation(activeAlarmMed);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+        if (!deadlineRef.current) return;
+        const diff = Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000));
+        setSecondsRemaining(diff);
+      }, 500);
     } else {
       stopSpeech();
       if (timerRef.current) clearInterval(timerRef.current);
@@ -59,6 +59,30 @@ export const AlarmModal = () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [activeAlarmMed]);
+
+  // AppState listener: catches countdown immediately when returning from background!
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && activeAlarmMed && deadlineRef.current) {
+        const diff = Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000));
+        setSecondsRemaining(diff);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [activeAlarmMed]);
+
+  // Clean side-effect when countdown finishes (Prevents React parent setState-in-render crash!)
+  useEffect(() => {
+    if (secondsRemaining === 0 && activeAlarmMed) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      stopSpeech();
+      // Safely notify parent after render cycle completes
+      setTimeout(() => {
+        triggerMissedEscalation(activeAlarmMed);
+      }, 50);
+    }
+  }, [secondsRemaining, activeAlarmMed]);
 
   if (!activeAlarmMed) return null;
 
@@ -85,7 +109,7 @@ export const AlarmModal = () => {
       stopSpeech();
       setIsSpeaking(false);
     } else {
-      speakMedicationReminder(activeAlarmMed, 'Robert');
+      speakMedicationReminder(activeAlarmMed, patientName);
       setIsSpeaking(true);
     }
   };
@@ -155,7 +179,7 @@ export const AlarmModal = () => {
             <Text style={styles.btnSnoozeText}>Snooze (10 Mins)</Text>
           </TouchableOpacity>
 
-          {/* Instant Escalate Button for Demo */}
+          {/* Instant Escalate Button */}
           <TouchableOpacity 
             style={styles.escalateDemoBtn}
             onPress={handleEscalateNow}
