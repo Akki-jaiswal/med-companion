@@ -143,7 +143,7 @@ export const triggerCloudEscalation = async (alertPayload) => {
 
 /**
  * 6. PAIR PATIENT BY 6-DIGIT CODE
- * Caretaker enters patient's code (e.g. MED-7821) -> Firestore links them.
+ * Caretaker enters patient's code -> Firestore links them.
  */
 export const findPatientByCodeInCloud = async (pairingCode) => {
   if (!isFirebaseConfigured() || !db) return null;
@@ -159,6 +159,46 @@ export const findPatientByCodeInCloud = async (pairingCode) => {
     return null;
   } catch (error) {
     console.log('[Backend] Pairing lookup error:', error.message);
+    return null;
+  }
+};
+
+/**
+ * 7. USER AUTH CLOUD PERSISTENCE
+ * Saves registered users and restores user accounts across sessions/devices.
+ */
+export const saveUserToCloud = async (userData) => {
+  if (!isFirebaseConfigured() || !db || !userData?.email) return false;
+
+  try {
+    const userEmailDoc = userData.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
+    const userRef = doc(db, 'users', userEmailDoc);
+    await setDoc(userRef, {
+      ...userData,
+      updatedAt: new Date().toISOString(),
+    });
+    console.log(`[Backend] Saved user ${userData.email} to Cloud Firestore`);
+    return true;
+  } catch (error) {
+    console.log('[Backend] User cloud save error:', error.message);
+    return false;
+  }
+};
+
+export const findUserInCloud = async (email) => {
+  if (!isFirebaseConfigured() || !db || !email) return null;
+
+  try {
+    const q = query(collection(db, 'users'), where('email', '==', email.toLowerCase()));
+    const snapshot = await getDocs(q);
+
+    if (!snapshot.empty) {
+      const userDoc = snapshot.docs[0];
+      return { id: userDoc.id, ...userDoc.data() };
+    }
+    return null;
+  } catch (error) {
+    console.log('[Backend] User cloud lookup error:', error.message);
     return null;
   }
 };

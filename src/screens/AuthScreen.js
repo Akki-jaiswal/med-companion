@@ -113,8 +113,20 @@ export const AuthScreen = ({ onClose }) => {
         return;
       }
 
-      await loginUser(email.trim().toLowerCase(), password);
-      Alert.alert('Signed In', `Welcome back!`);
+      const res = await loginUser(email.trim().toLowerCase(), password);
+      if (!res || !res.success) {
+        Alert.alert('Sign In Failed', res?.error || 'Unable to sign in. Please verify your credentials.');
+        return;
+      }
+
+      const isDual = res.user.roles?.includes('CARETAKER') && res.user.roles?.includes('PATIENT');
+      const roleText = isDual 
+        ? 'Dual Mode (Patient & Caretaker)' 
+        : res.user.primaryRole === 'CARETAKER' 
+          ? 'Caretaker Mode' 
+          : 'Patient Mode';
+
+      Alert.alert('Signed In Successfully', `Welcome back, ${res.user.name}!\nMode: ${roleText}`);
       if (onClose) onClose();
     }
   };

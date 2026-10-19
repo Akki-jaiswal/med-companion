@@ -15,7 +15,9 @@ import {
   addMedicationToCloud,
   subscribeToEscalationAlerts,
   triggerCloudEscalation,
-  findPatientByCodeInCloud
+  findPatientByCodeInCloud,
+  saveUserToCloud,
+  findUserInCloud
 } from '../services/firestoreService';
 
 const AppContext = createContext();
@@ -119,27 +121,49 @@ export const AppProvider = ({ children }) => {
 
     const loadSavedData = async () => {
       try {
-        const savedUser = await AsyncStorage.getItem('@med_user');
-        if (savedUser) {
-          const userObj = JSON.parse(savedUser);
-          setCurrentUser(userObj);
-          setUserRole(userObj.primaryRole || (Array.isArray(userObj.roles) ? userObj.roles[0] : userObj.role) || 'PATIENT');
-          if (userObj.emergencyCaretakerPhone) {
-            setCaretakerPhone(userObj.emergencyCaretakerPhone);
+        // 1. Check if an active session exists
+        const activeEmail = await AsyncStorage.getItem('@active_user_session');
+        let userToLoad = null;
+
+        if (activeEmail) {
+          // Look up user from persistent registered users map
+          const mapStr = await AsyncStorage.getItem('@registered_users_map');
+          if (mapStr) {
+            const usersMap = JSON.parse(mapStr);
+            userToLoad = usersMap[activeEmail.toLowerCase()];
           }
-        } else {
-          // No user logged in - start cleanly with null
-          setCurrentUser(null);
         }
 
-        const savedMeds = await AsyncStorage.getItem('@medications');
-        if (savedMeds) setMedications(JSON.parse(savedMeds));
+        // Fallback to legacy @med_user if active session not yet migrated
+        if (!userToLoad) {
+          const savedLegacy = await AsyncStorage.getItem('@med_user');
+          if (savedLegacy) {
+            userToLoad = JSON.parse(savedLegacy);
+          }
+        }
 
-        const savedPatients = await AsyncStorage.getItem('@patients');
-        if (savedPatients) {
-          const parsed = JSON.parse(savedPatients);
-          setPatients(parsed);
-          if (parsed.length > 0) setSelectedPatientId(parsed[0].id);
+        if (userToLoad && userToLoad.isAuthenticated) {
+          setCurrentUser(userToLoad);
+          const targetRole = userToLoad.primaryRole || (Array.isArray(userToLoad.roles) ? userToLoad.roles[0] : 'PATIENT');
+          setUserRole(targetRole);
+          if (userToLoad.emergencyCaretakerPhone) {
+            setCaretakerPhone(userToLoad.emergencyCaretakerPhone);
+          }
+
+          // Load user-scoped patients
+          const savedPatients = await AsyncStorage.getItem(`@patients_${userToLoad.id}`) || await AsyncStorage.getItem('@patients');
+          if (savedPatients) {
+            const parsed = JSON.parse(savedPatients);
+            setPatients(parsed);
+            if (parsed.length > 0) setSelectedPatientId(parsed[0].id);
+          }
+
+          // Load user-scoped medications
+          const savedMeds = await AsyncStorage.getItem(`@medications_${userToLoad.id}`) || await AsyncStorage.getItem('@medications');
+          if (savedMeds) setMedications(JSON.parse(savedMeds));
+        } else {
+          // No user is logged in
+          setCurrentUser(null);
         }
 
         const savedHistory = await AsyncStorage.getItem('@adherence_history');
@@ -186,6 +210,9 @@ export const AppProvider = ({ children }) => {
     setMedications(updatedMeds);
     try {
       await AsyncStorage.setItem('@medications', JSON.stringify(updatedMeds));
+      if (currentUser?.id) {
+        await AsyncStorage.setItem(`@medications_${currentUser.id}`, JSON.stringify(updatedMeds));
+      }
     } catch (e) {
       console.log('Error saving storage', e);
     }
@@ -193,6 +220,7 @@ export const AppProvider = ({ children }) => {
 
   // Register New User (Dynamic Name, Dynamic Roles: Patient, Caretaker, or Both)
   const registerUser = async (userData) => {
+    const emailKey = userData.email.trim().toLowerCase();
     const roles = Array.isArray(userData.roles) && userData.roles.length > 0
       ? userData.roles
       : [userData.role || 'PATIENT'];
@@ -200,14 +228,16 @@ export const AppProvider = ({ children }) => {
     const isPatient = roles.includes('PATIENT');
     const isCaretaker = roles.includes('CARETAKER');
 
-    // Dynamic random pairing code if Patient
+    // If user registered as only Caretaker, start in CARETAKER mode!
+    // If user registered as only Patient or Both, start in PATIENT mode!
+    const initialPrimaryRole = isCaretaker && !isPatient ? 'CARETAKER' : 'PATIENT';
     const pairingCode = isPatient ? 'MED-' + Math.floor(1000 + Math.random() * 9000) : null;
-    const initialPrimaryRole = isPatient ? 'PATIENT' : 'CARETAKER';
 
     const newUser = {
       id: 'u_' + Date.now(),
       name: userData.name.trim(),
-      email: userData.email.trim().toLowerCase(),
+      email: emailKey,
+      password: userData.password,
       phone: userData.phone ? userData.phone.trim() : '',
       roles: roles,
       primaryRole: initialPrimaryRole,
@@ -219,15 +249,30 @@ export const AppProvider = ({ children }) => {
       registeredAt: new Date().toISOString(),
     };
 
+    // Set in-memory active states
     setCurrentUser(newUser);
     setUserRole(initialPrimaryRole);
     if (newUser.emergencyCaretakerPhone) {
       setCaretakerPhone(newUser.emergencyCaretakerPhone);
     }
 
+    // 1. Permanently store in Registered Users Map
+    let usersMap = {};
+    try {
+      const existingMapStr = await AsyncStorage.getItem('@registered_users_map');
+      if (existingMapStr) usersMap = JSON.parse(existingMapStr);
+    } catch (e) {}
+    usersMap[emailKey] = newUser;
+    await AsyncStorage.setItem('@registered_users_map', JSON.stringify(usersMap));
+
+    // 2. Persist active user session
+    await AsyncStorage.setItem('@active_user_session', emailKey);
     await AsyncStorage.setItem('@med_user', JSON.stringify(newUser));
 
-    // If patient mode was selected, initialize patient entry
+    // 3. Save to Cloud Firestore
+    await saveUserToCloud(newUser);
+
+    // 4. If patient mode was selected, initialize patient entry
     if (isPatient) {
       const patientSelf = {
         id: newUser.id,
@@ -240,54 +285,139 @@ export const AppProvider = ({ children }) => {
       };
       setPatients([patientSelf]);
       setSelectedPatientId(newUser.id);
+      await AsyncStorage.setItem(`@patients_${newUser.id}`, JSON.stringify([patientSelf]));
       await AsyncStorage.setItem('@patients', JSON.stringify([patientSelf]));
     } else {
       setPatients([]);
       setSelectedPatientId(null);
+      await AsyncStorage.setItem(`@patients_${newUser.id}`, JSON.stringify([]));
+      await AsyncStorage.setItem('@patients', JSON.stringify([]));
     }
 
-    // If caretaker mode provided a patient code to link right away:
+    // 5. If caretaker mode provided a patient code to link right away:
     if (isCaretaker && userData.patientCodeToLink) {
       await pairPatientByCode(userData.patientCodeToLink.trim().toUpperCase(), 'Monitored Patient');
     }
+
+    return { success: true, user: newUser };
   };
 
+  // Login Existing User with Exact Profile and Correct Role
   const loginUser = async (email, password) => {
-    const savedUserStr = await AsyncStorage.getItem('@med_user');
-    if (savedUserStr) {
-      const savedUser = JSON.parse(savedUserStr);
-      if (savedUser.email?.toLowerCase() === email.trim().toLowerCase()) {
-        savedUser.isAuthenticated = true;
-        setCurrentUser(savedUser);
-        const role = savedUser.primaryRole || (Array.isArray(savedUser.roles) ? savedUser.roles[0] : 'PATIENT');
-        setUserRole(role);
-        if (savedUser.emergencyCaretakerPhone) {
-          setCaretakerPhone(savedUser.emergencyCaretakerPhone);
-        }
-        await AsyncStorage.setItem('@med_user', JSON.stringify(savedUser));
-        return true;
+    const emailKey = email.trim().toLowerCase();
+
+    // 1. Check local registered users map
+    let usersMap = {};
+    try {
+      const mapStr = await AsyncStorage.getItem('@registered_users_map');
+      if (mapStr) usersMap = JSON.parse(mapStr);
+    } catch (e) {}
+
+    let foundUser = usersMap[emailKey];
+
+    // 2. Check Cloud Firestore if not found locally
+    if (!foundUser) {
+      const cloudUser = await findUserInCloud(emailKey);
+      if (cloudUser) {
+        foundUser = cloudUser;
+        usersMap[emailKey] = cloudUser;
+        await AsyncStorage.setItem('@registered_users_map', JSON.stringify(usersMap));
       }
     }
 
-    // If logging in for the first time
-    const fallbackUser = {
-      id: 'u_' + Date.now(),
-      name: email.split('@')[0],
-      email: email.trim().toLowerCase(),
-      phone: '',
-      roles: ['PATIENT'],
-      primaryRole: 'PATIENT',
-      pairingCode: 'MED-' + Math.floor(1000 + Math.random() * 9000),
-      emergencyCaretakerPhone: '',
-      isAuthenticated: true,
-    };
-    setCurrentUser(fallbackUser);
-    setUserRole('PATIENT');
-    await AsyncStorage.setItem('@med_user', JSON.stringify(fallbackUser));
-    return true;
+    // 3. Check legacy @med_user
+    if (!foundUser) {
+      try {
+        const legacyStr = await AsyncStorage.getItem('@med_user');
+        if (legacyStr) {
+          const legacy = JSON.parse(legacyStr);
+          if (legacy.email?.toLowerCase() === emailKey) {
+            foundUser = legacy;
+            usersMap[emailKey] = legacy;
+            await AsyncStorage.setItem('@registered_users_map', JSON.stringify(usersMap));
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 4. If account does NOT exist, fail gracefully with an explicit message
+    if (!foundUser) {
+      return {
+        success: false,
+        error: `No account found with email "${email}". Please verify your email or click "Create Account" to register.`
+      };
+    }
+
+    // 5. Verify password
+    if (foundUser.password && foundUser.password !== password) {
+      return {
+        success: false,
+        error: 'Incorrect password. Please enter the correct password.'
+      };
+    }
+
+    // 6. Restore real account state
+    foundUser.isAuthenticated = true;
+    const targetRole = foundUser.primaryRole || (Array.isArray(foundUser.roles) ? foundUser.roles[0] : 'PATIENT');
+    
+    setCurrentUser(foundUser);
+    setUserRole(targetRole);
+
+    if (foundUser.emergencyCaretakerPhone) {
+      setCaretakerPhone(foundUser.emergencyCaretakerPhone);
+    }
+
+    // 7. Load user-specific patients & medications
+    try {
+      const userPatientsStr = await AsyncStorage.getItem(`@patients_${foundUser.id}`);
+      if (userPatientsStr) {
+        const parsed = JSON.parse(userPatientsStr);
+        setPatients(parsed);
+        if (parsed.length > 0) setSelectedPatientId(parsed[0].id);
+      } else if (foundUser.roles?.includes('PATIENT')) {
+        const patientSelf = {
+          id: foundUser.id,
+          name: foundUser.name,
+          age: foundUser.age || 65,
+          code: foundUser.pairingCode,
+          phone: foundUser.phone,
+          emergencyPhone: foundUser.emergencyCaretakerPhone,
+          relation: 'Self',
+        };
+        setPatients([patientSelf]);
+        setSelectedPatientId(foundUser.id);
+      } else {
+        setPatients([]);
+        setSelectedPatientId(null);
+      }
+
+      const userMedsStr = await AsyncStorage.getItem(`@medications_${foundUser.id}`);
+      if (userMedsStr) {
+        setMedications(JSON.parse(userMedsStr));
+      } else {
+        setMedications([]);
+      }
+    } catch (e) {
+      console.log('Error loading user-scoped data:', e);
+    }
+
+    // 8. Persist active session
+    await AsyncStorage.setItem('@active_user_session', emailKey);
+    await AsyncStorage.setItem('@med_user', JSON.stringify(foundUser));
+
+    return { success: true, user: foundUser };
   };
 
   const logoutUser = async () => {
+    // Persist current medications & patients under current user's id before clearing
+    if (currentUser?.id) {
+      try {
+        await AsyncStorage.setItem(`@medications_${currentUser.id}`, JSON.stringify(medications));
+        await AsyncStorage.setItem(`@patients_${currentUser.id}`, JSON.stringify(patients));
+      } catch (e) {}
+    }
+
+    // Clear active session
     setCurrentUser(null);
     setUserRole('PATIENT');
     setMedications([]);
@@ -296,20 +426,32 @@ export const AppProvider = ({ children }) => {
     setAdherenceHistory([]);
     setActiveAlarmMed(null);
     setEscalationAlert(null);
+
+    // Remove active session key only (Preserves registered user accounts in @registered_users_map!)
+    await AsyncStorage.removeItem('@active_user_session');
     await AsyncStorage.removeItem('@med_user');
-    await AsyncStorage.removeItem('@medications');
-    await AsyncStorage.removeItem('@patients');
-    await AsyncStorage.removeItem('@adherence_history');
   };
 
-  const switchUserRole = (newRole) => {
+  const switchUserRole = async (newRole) => {
     setUserRole(newRole);
-    setCurrentUser(prev => prev ? ({ ...prev, primaryRole: newRole }) : null);
+    if (currentUser) {
+      const updatedUser = { ...currentUser, primaryRole: newRole };
+      setCurrentUser(updatedUser);
+      // Update in registered users map and active session
+      try {
+        const mapStr = await AsyncStorage.getItem('@registered_users_map');
+        if (mapStr) {
+          const map = JSON.parse(mapStr);
+          map[updatedUser.email.toLowerCase()] = updatedUser;
+          await AsyncStorage.setItem('@registered_users_map', JSON.stringify(map));
+        }
+        await AsyncStorage.setItem('@med_user', JSON.stringify(updatedUser));
+      } catch (e) {}
+    }
   };
 
   const handleSetRole = (role) => {
-    setUserRole(role);
-    setCurrentUser(prev => prev ? ({ ...prev, primaryRole: role }) : null);
+    switchUserRole(role);
   };
 
   // Mark medicine as Taken
