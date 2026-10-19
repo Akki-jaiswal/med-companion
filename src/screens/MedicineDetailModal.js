@@ -1,12 +1,15 @@
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useApp } from '../context/AppContext';
 import { speakMedicationReminder, stopSpeech } from '../services/voiceService';
 
 export const MedicineDetailModal = ({ visible, med, onClose, onMarkTaken }) => {
+  const { currentUser } = useApp();
   if (!med) return null;
 
   const isTaken = med.statusToday === 'taken';
+  const targetPatientName = med.patientName || currentUser?.name || 'Patient';
 
   const handleClose = () => {
     stopSpeech();
@@ -48,7 +51,7 @@ export const MedicineDetailModal = ({ visible, med, onClose, onMarkTaken }) => {
             {/* Read Out Loud (Voice Assistant) Button */}
             <TouchableOpacity 
               style={styles.voiceBtn}
-              onPress={() => speakMedicationReminder(med)}
+              onPress={() => speakMedicationReminder(med, targetPatientName)}
             >
               <Ionicons name="volume-high" size={22} color="#0D9488" />
               <Text style={styles.voiceBtnText}>Read Instructions Out Loud</Text>

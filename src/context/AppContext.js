@@ -79,6 +79,10 @@ export const AppProvider = ({ children }) => {
     const now = Date.now();
     for (const med of medications) {
       if (med.statusToday === 'pending' && med.targetTimestamp) {
+        // Resolve patient identity accurately (never assume currentUser is patient if currently in Caretaker mode)
+        const owningPatient = patients.find(p => p.id === med.patientId);
+        const resolvedPatientName = med.patientName || (userRole === 'PATIENT' ? currentUser?.name : owningPatient?.name) || 'Patient';
+
         // Case A: User was away from app and >60s passed since scheduled time without acknowledgement
         if (now >= med.targetTimestamp + 60000 && !firedAlarmIdsRef.current.has(med.id)) {
           firedAlarmIdsRef.current.add(med.id);
@@ -87,13 +91,17 @@ export const AppProvider = ({ children }) => {
         // Case B: Alarm time has arrived (within current 60s active countdown window)
         else if (now >= med.targetTimestamp && !firedAlarmIdsRef.current.has(med.id)) {
           firedAlarmIdsRef.current.add(med.id);
-          setActiveAlarmMed(med);
-          fireInstantMedicationNotification(med);
+          
+          // CRITICAL: Full-screen medication alarm & TTS are strictly for PATIENTS!
+          // Caretakers monitor patients and should NEVER be prompted to take a patient's medication.
+          if (userRole === 'PATIENT') {
+            setActiveAlarmMed(med);
+            fireInstantMedicationNotification(med);
+          }
 
-          // Schedule background OS notification for Caretaker in 60s in case user minimizes app
-          const patientName = currentUser?.name || 'Patient';
+          // Schedule background OS notification for Caretaker in 60s in case patient minimizes app
           const notifId = await scheduleCaretakerEscalationNotification(
-            patientName,
+            resolvedPatientName,
             med.name,
             med.time,
             60
@@ -550,13 +558,18 @@ export const AppProvider = ({ children }) => {
 
     setActiveAlarmMed(null);
 
+    // Accurately resolve owning patient's name and ID (never default to Dr. Sharma/Caretaker)
+    const owningPatient = patients.find(p => p.id === med.patientId);
+    const resolvedPatientName = med.patientName || (userRole === 'PATIENT' ? currentUser?.name : owningPatient?.name) || 'Patient';
+    const resolvedPatientId = med.patientId || owningPatient?.id || (userRole === 'PATIENT' ? currentUser?.id : selectedPatientId);
+
     const alertPayload = {
-      patientId: selectedPatientId,
-      patientName: currentUser?.name || 'Patient',
+      patientId: resolvedPatientId,
+      patientName: resolvedPatientName,
       pillName: med.name,
       scheduledTime: med.time,
-      timestamp: new Date().toLocaleTimeString(),
-      phone: caretakerPhone,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      phone: owningPatient?.phone || caretakerPhone,
     };
 
     setEscalationAlert(alertPayload);
@@ -578,15 +591,24 @@ export const AppProvider = ({ children }) => {
     const now = Date.now();
     const targetTimestamp = parseTimeToTimestamp(newMed.time, now);
 
-    // Target patient ID:
-    const targetPatientId = userRole === 'CARETAKER'
-      ? (selectedPatientId || (patients.length > 0 ? patients[0].id : null))
-      : (currentUser?.id || selectedPatientId || 'self');
+    // Target patient ID and patient name:
+    let targetPatientId;
+    let targetPatientName;
+
+    if (userRole === 'CARETAKER') {
+      const currentPat = patients.find(p => p.id === selectedPatientId) || patients[0];
+      targetPatientId = currentPat?.id || selectedPatientId || 'patient_1';
+      targetPatientName = currentPat?.name || 'Patient';
+    } else {
+      targetPatientId = currentUser?.id || 'self';
+      targetPatientName = currentUser?.name || 'Patient';
+    }
 
     const item = {
       ...newMed,
       id: 'm_' + now,
       patientId: targetPatientId,
+      patientName: targetPatientName,
       targetTimestamp: targetTimestamp,
       statusToday: 'pending',
       takenAt: null,
@@ -788,6 +810,26 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // Completely Wipe All Local & Session Data (Clean Slate to Start Fresh)
+  const resetEntireAppData = async () => {
+    try {
+      await AsyncStorage.clear();
+      setCurrentUser(null);
+      setUserRole('PATIENT');
+      setPatients([]);
+      setMedications([]);
+      setSelectedPatientId(null);
+      setAdherenceHistory([]);
+      setActiveAlarmMed(null);
+      setEscalationAlert(null);
+      firedAlarmIdsRef.current.clear();
+      pendingEscalationsRef.current = {};
+      console.log('App storage completely reset to clean state.');
+    } catch (e) {
+      console.log('Error resetting app storage:', e);
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -800,6 +842,7 @@ export const AppProvider = ({ children }) => {
         registerUser,
         logoutUser,
         deleteUserAccount,
+        resetEntireAppData,
         selectedPatientId,
         setSelectedPatientId,
         patients,

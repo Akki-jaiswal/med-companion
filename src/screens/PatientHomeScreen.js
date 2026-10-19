@@ -22,7 +22,12 @@ export const PatientHomeScreen = () => {
   // Dynamic patient name
   const patientDisplayName = currentUser?.name || 'Patient';
 
-  const patientMeds = medications.filter(m => !m.patientId || m.patientId === currentUser?.id);
+  const patientMeds = medications.filter(m => 
+    !m.patientId || 
+    m.patientId === 'self' || 
+    m.patientId === currentUser?.id || 
+    m.patientId === currentUser?.pairingCode
+  );
   const pendingCount = patientMeds.filter(m => m.statusToday === 'pending').length;
 
   const handleShareCode = async () => {

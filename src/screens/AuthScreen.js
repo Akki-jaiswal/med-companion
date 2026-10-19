@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 
 export const AuthScreen = ({ onClose }) => {
-  const { loginUser, registerUser } = useApp();
+  const { loginUser, registerUser, resetEntireAppData } = useApp();
 
   const [isSignUp, setIsSignUp] = useState(true);
 
@@ -397,6 +397,31 @@ export const AuthScreen = ({ onClose }) => {
           </View>
         )}
 
+        {/* Clean Slate / Start Fresh Option */}
+        <TouchableOpacity 
+          style={styles.cleanSlateBtn} 
+          onPress={() => {
+            Alert.alert(
+              'Reset All App Data',
+              'This will erase all accounts, medications, and records from this device so you can start 100% fresh. Continue?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Wipe & Start Fresh', 
+                  style: 'destructive', 
+                  onPress: async () => {
+                    await resetEntireAppData();
+                    Alert.alert('Clean Slate Ready', 'All data has been wiped. You can now register as a brand new Patient.');
+                  } 
+                }
+              ]
+            );
+          }}
+        >
+          <Ionicons name="trash-bin-outline" size={16} color="#64748B" />
+          <Text style={styles.cleanSlateBtnText}>Reset All Local Data (Start Fresh)</Text>
+        </TouchableOpacity>
+
         <View style={{ height: 50 }} />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -670,5 +695,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  cleanSlateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginTop: 18,
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  cleanSlateBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
   },
 });

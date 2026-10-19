@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 
 export const ProfileScreen = ({ onOpenAuth }) => {
-  const { currentUser, userRole, logoutUser, switchUserRole, deleteUserAccount } = useApp();
+  const { currentUser, userRole, logoutUser, switchUserRole, deleteUserAccount, resetEntireAppData } = useApp();
 
   const hasBothRoles = currentUser?.roles?.includes('PATIENT') && currentUser?.roles?.includes('CARETAKER');
 
@@ -200,6 +200,30 @@ export const ProfileScreen = ({ onOpenAuth }) => {
       <TouchableOpacity style={styles.deleteAccountBtn} onPress={handleDeleteAccount}>
         <Ionicons name="trash-outline" size={18} color="#991B1B" />
         <Text style={styles.deleteAccountBtnText}>Delete Account Permanently</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={styles.cleanSlateBtn} 
+        onPress={() => {
+          Alert.alert(
+            'Reset App (Clean Slate)',
+            'This will clear all local accounts, records, and medications from this device so you can start completely fresh. Proceed?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Reset Everything', 
+                style: 'destructive', 
+                onPress: async () => {
+                  await resetEntireAppData();
+                  if (onOpenAuth) onOpenAuth();
+                } 
+              }
+            ]
+          );
+        }}
+      >
+        <Ionicons name="refresh-circle-outline" size={18} color="#64748B" />
+        <Text style={styles.cleanSlateBtnText}>Reset App & Start 100% Fresh</Text>
       </TouchableOpacity>
 
       <View style={{ height: 40 }} />
@@ -457,5 +481,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#991B1B',
+  },
+  cleanSlateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 14,
+    gap: 8,
+    marginTop: 10,
+  },
+  cleanSlateBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
   },
 });

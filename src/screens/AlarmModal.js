@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 import { speakMedicationReminder, stopSpeech } from '../services/voiceService';
 
 export const AlarmModal = () => {
-  const { activeAlarmMed, markAsTaken, snoozeAlarm, triggerMissedEscalation, currentUser } = useApp();
+  const { activeAlarmMed, markAsTaken, snoozeAlarm, triggerMissedEscalation, currentUser, userRole } = useApp();
   const [pulseAnim] = useState(new Animated.Value(1));
   const [isSpeaking, setIsSpeaking] = useState(true);
   
@@ -14,11 +14,12 @@ export const AlarmModal = () => {
   const timerRef = useRef(null);
   const deadlineRef = useRef(null);
 
-  const patientName = currentUser?.name || 'Patient';
+  // Accurately resolve patient name from the medication (never address Dr. Sharma/Caretaker)
+  const patientName = activeAlarmMed?.patientName || (userRole === 'PATIENT' ? currentUser?.name : 'Patient');
 
-  // Alarm appearance effect
+  // Alarm appearance effect (STRICTLY for Patient mode)
   useEffect(() => {
-    if (activeAlarmMed) {
+    if (activeAlarmMed && userRole === 'PATIENT') {
       // Set fixed 60-second deadline from now
       deadlineRef.current = Date.now() + 60 * 1000;
       setSecondsRemaining(60);
@@ -58,7 +59,7 @@ export const AlarmModal = () => {
       stopSpeech();
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [activeAlarmMed]);
+  }, [activeAlarmMed, userRole]);
 
   // AppState listener: catches countdown immediately when returning from background!
   useEffect(() => {
@@ -84,7 +85,7 @@ export const AlarmModal = () => {
     }
   }, [secondsRemaining, activeAlarmMed]);
 
-  if (!activeAlarmMed) return null;
+  if (!activeAlarmMed || userRole !== 'PATIENT') return null;
 
   const handleTaken = () => {
     stopSpeech();
