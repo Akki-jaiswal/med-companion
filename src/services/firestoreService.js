@@ -146,20 +146,64 @@ export const triggerCloudEscalation = async (alertPayload) => {
  * Caretaker enters patient's code -> Firestore links them.
  */
 export const findPatientByCodeInCloud = async (pairingCode) => {
-  if (!isFirebaseConfigured() || !db) return null;
+  if (!isFirebaseConfigured() || !db || !pairingCode) return null;
 
   try {
-    const q = query(collection(db, 'patients'), where('code', '==', pairingCode.toUpperCase()));
-    const snapshot = await getDocs(q);
+    const cleanCode = pairingCode.toUpperCase();
 
-    if (!snapshot.empty) {
-      const patientDoc = snapshot.docs[0];
-      return { id: patientDoc.id, ...patientDoc.data() };
+    // Check 'users' collection where pairingCode matches
+    const qUsers = query(collection(db, 'users'), where('pairingCode', '==', cleanCode));
+    const snapUsers = await getDocs(qUsers);
+    if (!snapUsers.empty) {
+      const uDoc = snapUsers.docs[0];
+      const data = uDoc.data();
+      return {
+        id: data.id || uDoc.id,
+        name: data.name,
+        age: data.age,
+        phone: data.phone,
+        code: data.pairingCode,
+        emergencyPhone: data.emergencyCaretakerPhone || '',
+      };
     }
+
+    // Check 'patients' collection
+    const qPatients = query(collection(db, 'patients'), where('code', '==', cleanCode));
+    const snapPatients = await getDocs(qPatients);
+    if (!snapPatients.empty) {
+      const patientDoc = snapPatients.docs[0];
+      const pData = patientDoc.data();
+      return {
+        id: patientDoc.id,
+        name: pData.name,
+        age: pData.age,
+        phone: pData.phone,
+        code: pData.code,
+        emergencyPhone: pData.emergencyPhone || '',
+      };
+    }
+
     return null;
   } catch (error) {
     console.log('[Backend] Pairing lookup error:', error.message);
     return null;
+  }
+};
+
+export const savePatientToCloud = async (patientData) => {
+  if (!isFirebaseConfigured() || !db || !patientData?.id) return false;
+
+  try {
+    const patientRef = doc(db, 'patients', patientData.id);
+    await setDoc(patientRef, {
+      ...patientData,
+      updatedAt: new Date().toISOString(),
+    });
+    console.log(`[Backend] Saved patient ${patientData.name} to Cloud Firestore`);
+    return true;
+  } catch (error) {
+    console.log('[Backend] Patient cloud save error:', error.message);
+    return false;
   }
 };
 

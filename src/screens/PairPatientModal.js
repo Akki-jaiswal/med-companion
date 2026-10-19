@@ -1,49 +1,51 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 
 export const PairPatientModal = ({ visible, onClose }) => {
-  const { addPatient, pairPatientByCode } = useApp();
+  const { pairPatientByCode } = useApp();
 
   const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  const [age, setAge] = useState('');
-  const [phone, setPhone] = useState('');
-  const [relation, setRelation] = useState('Family');
+  const [relation, setRelation] = useState('Doctor');
+  const [customRelation, setCustomRelation] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const relations = ['Father', 'Mother', 'Spouse', 'Grandparent', 'Child', 'Other'];
+  const relations = ['Doctor', 'Father', 'Mother', 'Spouse', 'Grandparent', 'Child', 'Guardian', 'Other'];
 
   const handlePair = async () => {
-    // If linking directly by 6-digit code:
-    if (code.trim()) {
-      await pairPatientByCode(code.trim().toUpperCase(), name.trim() || 'Monitored Patient');
+    const cleanCode = code.trim().toUpperCase();
+    if (!cleanCode) {
+      Alert.alert('Required Field', "Please enter the patient's 6-digit App Code (e.g. MED-1186).");
+      return;
+    }
+
+    const finalRelation = relation === 'Other' && customRelation.trim() 
+      ? customRelation.trim() 
+      : relation;
+
+    setIsSubmitting(true);
+    try {
+      const res = await pairPatientByCode(cleanCode, finalRelation);
+      setIsSubmitting(false);
+
+      if (!res.success) {
+        Alert.alert('Patient Not Found', res.error);
+        return;
+      }
+
+      // Success!
       setCode('');
-      setName('');
+      setCustomRelation('');
       onClose();
-      Alert.alert('Patient Linked!', `Patient code ${code.trim().toUpperCase()} linked to your Caretaker Dashboard.`);
-      return;
+      Alert.alert(
+        'Patient Linked Successfully!',
+        `${res.patient.name} (Age: ${res.patient.age || 'N/A'}, Code: ${res.patient.code}) has been connected to your Caretaker Dashboard as your ${finalRelation}.`
+      );
+    } catch (err) {
+      setIsSubmitting(false);
+      Alert.alert('Error', 'Unable to link patient. Please try again.');
     }
-
-    if (!name.trim()) {
-      Alert.alert('Required', 'Please enter patient name or their 6-digit code.');
-      return;
-    }
-
-    addPatient({
-      name: name.trim(),
-      age: parseInt(age, 10) || 65,
-      phone: phone.trim(),
-      relation,
-    });
-
-    // Reset & close
-    setCode('');
-    setName('');
-    setAge('');
-    setPhone('');
-    onClose();
-    Alert.alert('Patient Linked!', `${name} is now connected to your Caretaker Dashboard.`);
   };
 
   return (
@@ -52,79 +54,92 @@ export const PairPatientModal = ({ visible, onClose }) => {
         <View style={styles.modalContent}>
           {/* Header */}
           <View style={styles.headerRow}>
-            <Text style={styles.modalTitle}>Link New Patient</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={26} color="#64748B" />
+            <View style={styles.headerLeft}>
+              <View style={styles.iconCircle}>
+                <Ionicons name="link" size={20} color="#0D9488" />
+              </View>
+              <Text style={styles.modalTitle}>Link New Patient</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <Ionicons name="close" size={22} color="#64748B" />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.subInfo}>
-            Enter the patient's 6-digit App Code (MED-XXXX) or add their details manually to monitor their daily medications remotely.
-          </Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text style={styles.subInfo}>
+              Enter the patient's 6-digit App Code. Their registered name, age, phone number, and daily prescriptions will sync automatically.
+            </Text>
 
-          {/* Code Link Box */}
-          <Text style={styles.label}>Patient's 6-Digit Code (Optional)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. MED-7821"
-            autoCapitalize="characters"
-            value={code}
-            onChangeText={setCode}
-          />
-
-          {/* Manual Details Form */}
-          <Text style={styles.label}>Patient Full Name</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Enter patient name"
-            value={name}
-            onChangeText={setName}
-          />
-
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Age</Text>
+            {/* MANDATORY / COMPULSORY 6-DIGIT CODE */}
+            <Text style={styles.label}>Patient's 6-Digit App Code * (Compulsory)</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="key-outline" size={20} color="#0D9488" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                placeholder="e.g. 70"
-                keyboardType="numeric"
-                value={age}
-                onChangeText={setAge}
+                placeholder="e.g. MED-1186"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                value={code}
+                onChangeText={setCode}
               />
             </View>
 
-            <View style={{ flex: 2 }}>
-              <Text style={styles.label}>Emergency Phone</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. +91 9876543210"
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-              />
+            {/* MANDATORY RELATIONSHIP SELECTOR */}
+            <Text style={styles.label}>Your Relationship to Patient *</Text>
+            <View style={styles.relationGrid}>
+              {relations.map((rel) => {
+                const isSelected = relation === rel;
+                return (
+                  <TouchableOpacity
+                    key={rel}
+                    style={[styles.relPill, isSelected && styles.relPillActive]}
+                    onPress={() => setRelation(rel)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.relText, isSelected && styles.relTextActive]}>
+                      {rel}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          </View>
 
-          <Text style={styles.label}>Relationship</Text>
-          <View style={styles.relationRow}>
-            {relations.map((rel) => (
-              <TouchableOpacity
-                key={rel}
-                style={[styles.relPill, relation === rel && styles.relPillActive]}
-                onPress={() => setRelation(rel)}
-              >
-                <Text style={[styles.relText, relation === rel && styles.relTextActive]}>
-                  {rel}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+            {relation === 'Other' && (
+              <View style={{ marginTop: 10 }}>
+                <Text style={styles.label}>Specify Relationship</Text>
+                <TextInput
+                  style={styles.customRelInput}
+                  placeholder="e.g. Nurse, Caregiver, Friend"
+                  placeholderTextColor="#94A3B8"
+                  value={customRelation}
+                  onChangeText={setCustomRelation}
+                />
+              </View>
+            )}
 
-          {/* Connect Button */}
-          <TouchableOpacity style={styles.connectBtn} onPress={handlePair}>
-            <Ionicons name="link-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.connectBtnText}>Link Patient to Dashboard</Text>
-          </TouchableOpacity>
+            {/* Info Box */}
+            <View style={styles.infoBox}>
+              <Ionicons name="shield-checkmark-outline" size={18} color="#0D9488" />
+              <Text style={styles.infoText}>
+                No need to type patient's name, age, or phone — they are securely pulled from the patient's registered profile.
+              </Text>
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity 
+              style={[styles.connectBtn, isSubmitting && { opacity: 0.6 }]} 
+              onPress={handlePair}
+              disabled={isSubmitting}
+            >
+              <Ionicons name="link-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.connectBtnText}>
+                {isSubmitting ? 'Verifying Code...' : 'Link Patient to Dashboard'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={{ height: 20 }} />
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -142,82 +157,145 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    maxHeight: '90%',
+    maxHeight: '85%',
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: '#0F172A',
   },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   subInfo: {
     fontSize: 13,
     color: '#64748B',
-    marginBottom: 16,
     lineHeight: 18,
+    marginBottom: 20,
   },
   label: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#475569',
+    color: '#334155',
+    marginBottom: 8,
     marginTop: 10,
-    marginBottom: 6,
-    textTransform: 'uppercase',
   },
-  input: {
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#F8FAFC',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#CBD5E1',
     borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
-    color: '#0F172A',
+    paddingHorizontal: 12,
   },
-  relationRow: {
+  inputIcon: {
+    marginRight: 8,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: 1.5,
+  },
+  relationGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 4,
+    marginBottom: 10,
   },
   relPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
   relPillActive: {
     backgroundColor: '#0D9488',
     borderColor: '#0D9488',
   },
   relText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#475569',
   },
   relTextActive: {
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontWeight: '800',
+  },
+  customRelInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F172A',
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#0F766E',
+    lineHeight: 16,
   },
   connectBtn: {
     flexDirection: 'row',
-    backgroundColor: '#0D9488',
-    paddingVertical: 15,
-    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 22,
+    backgroundColor: '#0D9488',
+    borderRadius: 14,
+    paddingVertical: 15,
     gap: 8,
+    shadowColor: '#0D9488',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
   },
   connectBtnText: {
-    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

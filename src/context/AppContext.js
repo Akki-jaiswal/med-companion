@@ -16,6 +16,7 @@ import {
   subscribeToEscalationAlerts,
   triggerCloudEscalation,
   findPatientByCodeInCloud,
+  savePatientToCloud,
   saveUserToCloud,
   findUserInCloud
 } from '../services/firestoreService';
@@ -184,13 +185,32 @@ export const AppProvider = ({ children }) => {
     return () => clearInterval(clockInterval);
   }, [medications]);
 
-  // Real-Time Cloud Listeners (Subscribes to Firestore when connected)
+  // Real-Time Cloud Listeners & Patient-Scoped Medications Loader
   useEffect(() => {
     if (!selectedPatientId) return;
 
+    // 1. Immediately load local medications for this patient
+    const loadLocalPatientMeds = async () => {
+      try {
+        const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${selectedPatientId}`);
+        if (pMedsStr) {
+          const pMeds = JSON.parse(pMedsStr);
+          setMedications(prev => {
+            const others = prev.filter(m => m.patientId !== selectedPatientId);
+            return [...others, ...pMeds];
+          });
+        }
+      } catch (e) {}
+    };
+    loadLocalPatientMeds();
+
+    // 2. Real-time Firestore sync for this patient
     const unsubscribeMeds = subscribeToPatientMedications(selectedPatientId, (cloudMeds) => {
       if (cloudMeds && cloudMeds.length > 0) {
-        setMedications(cloudMeds);
+        setMedications(prev => {
+          const others = prev.filter(m => m.patientId !== selectedPatientId);
+          return [...others, ...cloudMeds];
+        });
       }
     });
 
@@ -212,6 +232,12 @@ export const AppProvider = ({ children }) => {
       await AsyncStorage.setItem('@medications', JSON.stringify(updatedMeds));
       if (currentUser?.id) {
         await AsyncStorage.setItem(`@medications_${currentUser.id}`, JSON.stringify(updatedMeds));
+      }
+      // Also update patient-scoped storage for each affected patient
+      const patientIds = [...new Set(updatedMeds.map(m => m.patientId).filter(Boolean))];
+      for (const pId of patientIds) {
+        const pMeds = updatedMeds.filter(m => m.patientId === pId);
+        await AsyncStorage.setItem(`@patient_medications_${pId}`, JSON.stringify(pMeds));
       }
     } catch (e) {
       console.log('Error saving storage', e);
@@ -277,7 +303,7 @@ export const AppProvider = ({ children }) => {
       const patientSelf = {
         id: newUser.id,
         name: newUser.name,
-        age: newUser.age || 65,
+        age: newUser.age ? Number(newUser.age) : null,
         code: pairingCode,
         phone: newUser.phone,
         emergencyPhone: newUser.emergencyCaretakerPhone,
@@ -287,6 +313,7 @@ export const AppProvider = ({ children }) => {
       setSelectedPatientId(newUser.id);
       await AsyncStorage.setItem(`@patients_${newUser.id}`, JSON.stringify([patientSelf]));
       await AsyncStorage.setItem('@patients', JSON.stringify([patientSelf]));
+      await savePatientToCloud(patientSelf);
     } else {
       setPatients([]);
       setSelectedPatientId(null);
@@ -378,7 +405,7 @@ export const AppProvider = ({ children }) => {
         const patientSelf = {
           id: foundUser.id,
           name: foundUser.name,
-          age: foundUser.age || 65,
+          age: foundUser.age ? Number(foundUser.age) : null,
           code: foundUser.pairingCode,
           phone: foundUser.phone,
           emergencyPhone: foundUser.emergencyCaretakerPhone,
@@ -545,15 +572,20 @@ export const AppProvider = ({ children }) => {
     );
   };
 
-  // Add new medicine (from Caretaker)
+  // Add new medicine (from Caretaker or Patient)
   const addMedication = async (newMed) => {
     const now = Date.now();
     const targetTimestamp = parseTimeToTimestamp(newMed.time, now);
 
+    // Target patient ID:
+    const targetPatientId = userRole === 'CARETAKER'
+      ? (selectedPatientId || (patients.length > 0 ? patients[0].id : null))
+      : (currentUser?.id || selectedPatientId || 'self');
+
     const item = {
       ...newMed,
       id: 'm_' + now,
-      patientId: selectedPatientId,
+      patientId: targetPatientId,
       targetTimestamp: targetTimestamp,
       statusToday: 'pending',
       takenAt: null,
@@ -561,14 +593,28 @@ export const AppProvider = ({ children }) => {
 
     firedAlarmIdsRef.current.delete(item.id);
 
-    saveMedications([...medications, item]);
+    const updated = [...medications, item];
+    saveMedications(updated);
+
+    // Save under patient's scoped storage key so both patient and caretaker see it
+    if (targetPatientId) {
+      try {
+        let pMeds = [];
+        const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${targetPatientId}`);
+        if (pMedsStr) pMeds = JSON.parse(pMedsStr);
+        pMeds = [...pMeds.filter(m => m.id !== item.id), item];
+        await AsyncStorage.setItem(`@patient_medications_${targetPatientId}`, JSON.stringify(pMeds));
+      } catch (e) {}
+    }
+
     await addMedicationToCloud(item);
 
     const delay = Math.max(1, Math.round((targetTimestamp - now) / 1000));
     scheduleMedicationAlarm(item, delay);
 
-    // Also schedule Caretaker background escalation notification at delay + 60s
-    const patientName = currentUser?.name || 'Patient';
+    // Caretaker background escalation notification
+    const patientObj = patients.find(p => p.id === targetPatientId);
+    const patientName = patientObj?.name || currentUser?.name || 'Patient';
     const escId = await scheduleCaretakerEscalationNotification(
       patientName,
       item.name,
@@ -594,32 +640,85 @@ export const AppProvider = ({ children }) => {
     await AsyncStorage.setItem('@patients', JSON.stringify(updated));
   };
 
-  // Pair Patient by Code
-  const pairPatientByCode = async (code, fallbackName = 'Linked Patient') => {
-    const cloudPatient = await findPatientByCodeInCloud(code);
-    if (cloudPatient) {
-      setPatients(prev => [...prev.filter(p => p.id !== cloudPatient.id), cloudPatient]);
-      setSelectedPatientId(cloudPatient.id);
-      return cloudPatient;
+  // Pair Patient by Code (Strict Verification, Real Data, Zero Dummy Fallbacks)
+  const pairPatientByCode = async (code, relation = 'Doctor') => {
+    const cleanCode = code.trim().toUpperCase();
+
+    // 1. Search local registered users map
+    let foundPatient = null;
+    try {
+      const mapStr = await AsyncStorage.getItem('@registered_users_map');
+      if (mapStr) {
+        const usersMap = JSON.parse(mapStr);
+        for (const email of Object.keys(usersMap)) {
+          const user = usersMap[email];
+          if (user.pairingCode && user.pairingCode.toUpperCase() === cleanCode) {
+            foundPatient = {
+              id: user.id,
+              name: user.name,
+              age: user.age ? Number(user.age) : null,
+              phone: user.phone || '',
+              code: user.pairingCode,
+              relation: relation,
+              emergencyPhone: user.emergencyCaretakerPhone || '',
+            };
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Local patient lookup error:', e);
     }
 
-    const existing = patients.find(p => p.code.toUpperCase() === code.toUpperCase());
-    if (existing) {
-      setSelectedPatientId(existing.id);
-      return existing;
-    } else {
-      const newP = {
-        id: 'p_' + Date.now(),
-        name: fallbackName,
-        age: 65,
-        code: code.toUpperCase(),
-        phone: '',
-        relation: 'Monitored',
-      };
-      setPatients(prev => [...prev, newP]);
-      setSelectedPatientId(newP.id);
-      return newP;
+    // 2. If not found in local map, search Cloud Firestore
+    if (!foundPatient) {
+      const cloudPatient = await findPatientByCodeInCloud(cleanCode);
+      if (cloudPatient) {
+        foundPatient = {
+          ...cloudPatient,
+          age: cloudPatient.age ? Number(cloudPatient.age) : null,
+          relation: relation,
+        };
+      }
     }
+
+    // 3. If STILL not found: STRICTLY REJECT!
+    if (!foundPatient) {
+      return {
+        success: false,
+        error: `No registered patient found with code "${code}". Please verify the 6-digit code with the patient.`
+      };
+    }
+
+    // 4. Patient exists! Add to Caretaker's monitored patients
+    const updatedPatients = [
+      ...patients.filter(p => p.id !== foundPatient.id && p.code?.toUpperCase() !== cleanCode),
+      foundPatient
+    ];
+    setPatients(updatedPatients);
+    setSelectedPatientId(foundPatient.id);
+
+    // Persist in storage
+    await AsyncStorage.setItem('@patients', JSON.stringify(updatedPatients));
+    if (currentUser?.id) {
+      await AsyncStorage.setItem(`@patients_${currentUser.id}`, JSON.stringify(updatedPatients));
+    }
+
+    // 5. Load this patient's medications immediately!
+    try {
+      const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${foundPatient.id}`);
+      if (pMedsStr) {
+        const pMeds = JSON.parse(pMedsStr);
+        setMedications(prev => {
+          const others = prev.filter(m => m.patientId !== foundPatient.id);
+          return [...others, ...pMeds];
+        });
+      }
+    } catch (e) {
+      console.log('Error loading patient medications:', e);
+    }
+
+    return { success: true, patient: foundPatient };
   };
 
   return (

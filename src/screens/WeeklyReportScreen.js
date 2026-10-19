@@ -11,7 +11,7 @@ export const WeeklyReportScreen = ({ onBack }) => {
     name: currentUser.name,
     code: currentUser.pairingCode,
     phone: currentUser.phone,
-    age: currentUser.age || 65,
+    age: currentUser.age || null,
   } : null);
 
   const patientMeds = currentPatient ? medications.filter(m => !m.patientId || m.patientId === currentPatient.id) : medications;
@@ -30,7 +30,7 @@ export const WeeklyReportScreen = ({ onBack }) => {
       name: currentUser?.name || 'Patient',
       code: currentUser?.pairingCode || 'N/A',
       phone: currentUser?.phone || 'N/A',
-      age: currentUser?.age || 65,
+      age: currentUser?.age || null,
     };
     generateAndShareAdherenceReport(reportPatient, patientMeds, adherenceHistory);
   };
