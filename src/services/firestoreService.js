@@ -8,6 +8,7 @@ import {
   onSnapshot, 
   updateDoc, 
   addDoc, 
+  deleteDoc,
   query, 
   where 
 } from './firebaseConfig';
@@ -244,5 +245,20 @@ export const findUserInCloud = async (email) => {
   } catch (error) {
     console.log('[Backend] User cloud lookup error:', error.message);
     return null;
+  }
+};
+
+export const deleteUserFromCloud = async (email) => {
+  if (!isFirebaseConfigured() || !db || !email) return false;
+
+  try {
+    const userEmailDoc = email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
+    const userRef = doc(db, 'users', userEmailDoc);
+    await deleteDoc(userRef);
+    console.log(`[Backend] Deleted user ${email} from Cloud Firestore`);
+    return true;
+  } catch (error) {
+    console.log('[Backend] User cloud delete error:', error.message);
+    return false;
   }
 };

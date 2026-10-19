@@ -18,7 +18,8 @@ import {
   findPatientByCodeInCloud,
   savePatientToCloud,
   saveUserToCloud,
-  findUserInCloud
+  findUserInCloud,
+  deleteUserFromCloud
 } from '../services/firestoreService';
 
 const AppContext = createContext();
@@ -721,6 +722,72 @@ export const AppProvider = ({ children }) => {
     return { success: true, patient: foundPatient };
   };
 
+  // Remove / Unlink Patient from Caretaker Dashboard
+  const removePatient = async (patientId) => {
+    const updated = patients.filter(p => p.id !== patientId);
+    setPatients(updated);
+
+    // If current selected patient was removed, switch to next available patient or null
+    if (selectedPatientId === patientId) {
+      setSelectedPatientId(updated.length > 0 ? updated[0].id : null);
+    }
+
+    // Update storage
+    await AsyncStorage.setItem('@patients', JSON.stringify(updated));
+    if (currentUser?.id) {
+      await AsyncStorage.setItem(`@patients_${currentUser.id}`, JSON.stringify(updated));
+    }
+  };
+
+  // Permanently Delete Current User Account
+  const deleteUserAccount = async () => {
+    if (!currentUser) return;
+    const emailKey = currentUser.email?.toLowerCase();
+    const userId = currentUser.id;
+
+    try {
+      // 1. Remove from local registered users map
+      const mapStr = await AsyncStorage.getItem('@registered_users_map');
+      if (mapStr) {
+        const usersMap = JSON.parse(mapStr);
+        if (emailKey && usersMap[emailKey]) {
+          delete usersMap[emailKey];
+          await AsyncStorage.setItem('@registered_users_map', JSON.stringify(usersMap));
+        }
+      }
+
+      // 2. Remove user-scoped data
+      if (userId) {
+        await AsyncStorage.removeItem(`@patients_${userId}`);
+        await AsyncStorage.removeItem(`@medications_${userId}`);
+      }
+
+      // 3. Clear session keys
+      await AsyncStorage.removeItem('@active_user_session');
+      await AsyncStorage.removeItem('@med_user');
+      await AsyncStorage.removeItem('@patients');
+      await AsyncStorage.removeItem('@medications');
+      await AsyncStorage.removeItem('@adherence_history');
+
+      // 4. Delete from Cloud Firestore if configured
+      if (emailKey) {
+        await deleteUserFromCloud(emailKey);
+      }
+
+      // 5. Reset all in-memory states
+      setCurrentUser(null);
+      setUserRole('PATIENT');
+      setPatients([]);
+      setMedications([]);
+      setSelectedPatientId(null);
+      setAdherenceHistory([]);
+      setActiveAlarmMed(null);
+      setEscalationAlert(null);
+    } catch (e) {
+      console.log('Error deleting account:', e);
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -732,10 +799,12 @@ export const AppProvider = ({ children }) => {
         loginUser,
         registerUser,
         logoutUser,
+        deleteUserAccount,
         selectedPatientId,
         setSelectedPatientId,
         patients,
         addPatient,
+        removePatient,
         pairPatientByCode,
         medications,
         addMedication,

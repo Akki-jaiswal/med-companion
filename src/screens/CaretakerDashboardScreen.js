@@ -14,7 +14,8 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
     medications,
     escalationAlert,
     setEscalationAlert,
-    adherenceHistory
+    adherenceHistory,
+    removePatient
   } = useApp();
 
   const [addMedModalVisible, setAddMedModalVisible] = useState(false);
@@ -22,6 +23,25 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
 
   const currentPatient = patients.find(p => p.id === selectedPatientId) || patients[0];
   const patientMeds = currentPatient ? medications.filter(m => m.patientId === currentPatient.id) : [];
+
+  const handleRemovePatient = () => {
+    if (!currentPatient) return;
+    Alert.alert(
+      'Remove Patient',
+      `Are you sure you want to remove ${currentPatient.name} (Code: ${currentPatient.code}) from your monitored patients list?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Remove', 
+          style: 'destructive', 
+          onPress: async () => {
+            await removePatient(currentPatient.id);
+            Alert.alert('Patient Removed', `${currentPatient.name} has been removed from your Caretaker Dashboard.`);
+          } 
+        }
+      ]
+    );
+  };
 
   // Stats calculation
   const totalDoses = adherenceHistory.length;
@@ -142,6 +162,14 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
                   <Ionicons name="call" size={20} color="#0D9488" />
                 </TouchableOpacity>
               ) : null}
+
+              {/* Remove/Unlink Patient Button */}
+              <TouchableOpacity 
+                style={styles.deletePatientBtn}
+                onPress={handleRemovePatient}
+              >
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </TouchableOpacity>
             </View>
 
             {/* Adherence Rate Mini-Bar */}
@@ -388,6 +416,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0FDFA',
     borderWidth: 1,
     borderColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deletePatientBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -9,6 +9,7 @@ import {
   onSnapshot, 
   updateDoc, 
   addDoc, 
+  deleteDoc,
   query, 
   where,
   orderBy 
@@ -59,6 +60,7 @@ export {
   onSnapshot, 
   updateDoc, 
   addDoc, 
+  deleteDoc,
   query, 
   where, 
   orderBy 
