@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { sendSOSAlert } from '../services/emergencyService';
 import { speakMedicationReminder } from '../services/voiceService';
 import { MedicineDetailModal } from './MedicineDetailModal';
+import { AddMedicationModal } from './AddMedicationModal';
 
 export const PatientHomeScreen = () => {
   const { 
@@ -16,12 +17,27 @@ export const PatientHomeScreen = () => {
 
   const [selectedMed, setSelectedMed] = useState(null);
   const [largeFontMode, setLargeFontMode] = useState(false);
+  const [addModalVisible, setAddModalVisible] = useState(false);
 
   // Dynamic patient name
   const patientDisplayName = currentUser?.name || 'Patient';
 
   const patientMeds = medications.filter(m => !m.patientId || m.patientId === 'p1' || m.patientId === currentUser?.id);
   const pendingCount = patientMeds.filter(m => m.statusToday === 'pending').length;
+
+  const handleShareCode = async () => {
+    if (!currentUser?.pairingCode) {
+      Alert.alert('Patient Code', 'Your pairing code is being generated.');
+      return;
+    }
+    try {
+      await Share.share({
+        message: `Hi! Here is my MedCompanion Patient Code: ${currentUser.pairingCode}. Please enter this in your Caretaker app to monitor my daily medications!`,
+      });
+    } catch (e) {
+      Alert.alert('Your Code', currentUser.pairingCode);
+    }
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -77,88 +93,122 @@ export const PatientHomeScreen = () => {
       </View>
 
       {/* Medication Cards List */}
-      {patientMeds.map((med) => {
-        const isTaken = med.statusToday === 'taken';
-        const isMissed = med.statusToday === 'missed';
+      {patientMeds.length > 0 ? (
+        patientMeds.map((med) => {
+          const isTaken = med.statusToday === 'taken';
+          const isMissed = med.statusToday === 'missed';
 
-        return (
-          <TouchableOpacity 
-            key={med.id} 
-            style={[styles.medCard, isTaken && styles.medCardTaken]}
-            onPress={() => setSelectedMed(med)}
-            activeOpacity={0.9}
-          >
-            {/* Color Strip & Pill Icon */}
-            <View style={[styles.pillColorBar, { backgroundColor: med.color || '#3B82F6' }]}>
-              <Ionicons 
-                name={med.shape === 'capsule' ? 'medical' : 'ellipse'} 
-                size={22} 
-                color="#FFFFFF" 
-              />
-            </View>
-
-            {/* Med Info */}
-            <View style={styles.medContent}>
-              <View style={styles.medTopRow}>
-                <Text style={[
-                  styles.medName, 
-                  largeFontMode && { fontSize: 21 },
-                  isTaken && styles.textStrikethrough
-                ]}>
-                  {med.name}
-                </Text>
-                
-                {/* Voice Readout Button */}
-                <TouchableOpacity 
-                  style={styles.cardVoiceBtn}
-                  onPress={() => speakMedicationReminder(med, patientDisplayName)}
-                >
-                  <Ionicons name="volume-high" size={18} color="#0D9488" />
-                </TouchableOpacity>
+          return (
+            <TouchableOpacity 
+              key={med.id} 
+              style={[styles.medCard, isTaken && styles.medCardTaken]}
+              onPress={() => setSelectedMed(med)}
+              activeOpacity={0.9}
+            >
+              {/* Color Strip & Pill Icon */}
+              <View style={[styles.pillColorBar, { backgroundColor: med.color || '#3B82F6' }]}>
+                <Ionicons 
+                  name={med.shape === 'capsule' ? 'medical' : 'ellipse'} 
+                  size={22} 
+                  color="#FFFFFF" 
+                />
               </View>
 
-              <Text style={[styles.dosageText, largeFontMode && { fontSize: 16 }]}>
-                Dosage: {med.dosage}
-              </Text>
-
-              <View style={styles.medFooterRow}>
-                <View style={styles.timeTag}>
-                  <Ionicons name="time" size={14} color="#64748B" />
-                  <Text style={[styles.timeTagText, largeFontMode && { fontSize: 14 }]}>
-                    {med.time}
+              {/* Med Info */}
+              <View style={styles.medContent}>
+                <View style={styles.medTopRow}>
+                  <Text style={[
+                    styles.medName, 
+                    largeFontMode && { fontSize: 21 },
+                    isTaken && styles.textStrikethrough
+                  ]}>
+                    {med.name}
                   </Text>
-                </View>
-                <View style={styles.mealTag}>
-                  <Ionicons name="restaurant-outline" size={14} color="#0D9488" />
-                  <Text style={[styles.mealTagText, largeFontMode && { fontSize: 14 }]}>
-                    {med.mealCondition}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Status and Action Buttons */}
-              <View style={styles.cardActions}>
-                {!isTaken ? (
+                  
+                  {/* Voice Readout Button */}
                   <TouchableOpacity 
-                    style={styles.takeDoseBtn}
-                    onPress={() => markAsTaken(med.id)}
+                    style={styles.cardVoiceBtn}
+                    onPress={() => speakMedicationReminder(med, patientDisplayName)}
                   >
-                    <Ionicons name="checkmark-sharp" size={18} color="#FFFFFF" />
-                    <Text style={[styles.takeDoseBtnText, largeFontMode && { fontSize: 16 }]}>
-                      Take Dose
-                    </Text>
+                    <Ionicons name="volume-high" size={18} color="#0D9488" />
                   </TouchableOpacity>
-                ) : (
-                  <View style={styles.statusBadgeTakenFull}>
-                    <Ionicons name="checkmark-done" size={16} color="#166534" />
-                    <Text style={styles.statusTextTaken}>Taken at {med.takenAt}</Text>
+                </View>
+
+                <Text style={[styles.dosageText, largeFontMode && { fontSize: 16 }]}>
+                  Dosage: {med.dosage}
+                </Text>
+
+                <View style={styles.medFooterRow}>
+                  <View style={styles.timeTag}>
+                    <Ionicons name="time" size={14} color="#64748B" />
+                    <Text style={[styles.timeTagText, largeFontMode && { fontSize: 14 }]}>
+                      {med.time}
+                    </Text>
                   </View>
-                )}
+                  <View style={styles.mealTag}>
+                    <Ionicons name="restaurant-outline" size={14} color="#0D9488" />
+                    <Text style={[styles.mealTagText, largeFontMode && { fontSize: 14 }]}>
+                      {med.mealCondition}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Status and Action Buttons */}
+                <View style={styles.cardActions}>
+                  {!isTaken ? (
+                    <TouchableOpacity 
+                      style={styles.takeDoseBtn}
+                      onPress={() => markAsTaken(med.id)}
+                    >
+                      <Ionicons name="checkmark-sharp" size={18} color="#FFFFFF" />
+                      <Text style={[styles.takeDoseBtnText, largeFontMode && { fontSize: 16 }]}>
+                        Take Dose
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.statusBadgeTakenFull}>
+                      <Ionicons name="checkmark-done" size={16} color="#166534" />
+                      <Text style={styles.statusTextTaken}>Taken at {med.takenAt}</Text>
+                    </View>
+                  )}
+                </View>
               </View>
+            </TouchableOpacity>
+          );
+        })
+      ) : (
+        /* Clean Zero-Data Empty State */
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconCircle}>
+            <Ionicons name="medical-outline" size={44} color="#0D9488" />
+          </View>
+          <Text style={styles.emptyTitle}>No Medications Scheduled Yet</Text>
+          <Text style={styles.emptySubtitle}>
+            Your schedule is currently empty. Tap below to add your first medicine, or share your code with your Caretaker.
+          </Text>
+
+          {/* Patient Code Share Box */}
+          {currentUser?.pairingCode && (
+            <View style={styles.emptyCodeBox}>
+              <Text style={styles.emptyCodeLabel}>YOUR 6-DIGIT PATIENT CODE</Text>
+              <Text style={styles.emptyCodeVal}>{currentUser.pairingCode}</Text>
+              <TouchableOpacity style={styles.emptyShareBtn} onPress={handleShareCode}>
+                <Ionicons name="share-social-outline" size={16} color="#0D9488" />
+                <Text style={styles.emptyShareBtnText}>Share Code with Caretaker</Text>
+              </TouchableOpacity>
             </View>
+          )}
+
+          {/* Add Medication Trigger */}
+          <TouchableOpacity 
+            style={styles.addMedEmptyBtn} 
+            onPress={() => setAddModalVisible(true)}
+          >
+            <Ionicons name="add-circle" size={20} color="#FFFFFF" />
+            <Text style={styles.addMedEmptyBtnText}>Add First Medication</Text>
           </TouchableOpacity>
-        );
-      })}
+        </View>
+      )}
 
       {/* Detailed Pill Modal */}
       <MedicineDetailModal
@@ -166,6 +216,12 @@ export const PatientHomeScreen = () => {
         med={selectedMed}
         onClose={() => setSelectedMed(null)}
         onMarkTaken={markAsTaken}
+      />
+
+      {/* Add Medication Modal */}
+      <AddMedicationModal
+        visible={addModalVisible}
+        onClose={() => setAddModalVisible(false)}
       />
 
       <View style={{ height: 100 }} />
@@ -400,5 +456,101 @@ const styles = StyleSheet.create({
     color: '#166534',
     fontSize: 14,
     fontWeight: '700',
+  },
+  emptyContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    marginTop: 10,
+  },
+  emptyIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 18,
+  },
+  emptyCodeBox: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  emptyCodeLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  emptyCodeVal: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#0D9488',
+    letterSpacing: 2,
+    marginBottom: 10,
+  },
+  emptyShareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#CCFBF1',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  emptyShareBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F766E',
+  },
+  addMedEmptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#0D9488',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 14,
+    width: '100%',
+    justifyContent: 'center',
+    shadowColor: '#0D9488',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  addMedEmptyBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

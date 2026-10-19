@@ -2,7 +2,11 @@ import * as Linking from 'expo-linking';
 import { Alert } from 'react-native';
 
 export const callCaretaker = async (phoneNumber) => {
-  const url = `tel:${phoneNumber || '+919876543210'}`;
+  if (!phoneNumber) {
+    Alert.alert('No Emergency Contact', 'Please set an Emergency Phone Number in your Profile or Registration.');
+    return;
+  }
+  const url = `tel:${phoneNumber}`;
   try {
     const supported = await Linking.canOpenURL(url);
     if (supported) {
@@ -16,6 +20,10 @@ export const callCaretaker = async (phoneNumber) => {
 };
 
 export const sendSOSAlert = async (patientName, phoneNumber) => {
+  if (!phoneNumber) {
+    Alert.alert('No Emergency Contact', 'Please set an Emergency Phone Number in your Profile before using Emergency SOS.');
+    return;
+  }
   Alert.alert(
     '🚨 EMERGENCY SOS ACTIVATED',
     `Connecting to Caretaker (${phoneNumber}). Stay calm, help is being notified immediately!`,

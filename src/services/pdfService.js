@@ -115,14 +115,14 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
 
         <div class="info-box">
           <div>
-            <strong>Patient Name:</strong> ${patient ? patient.name : 'Primary Patient'}<br>
-            <strong>Patient ID:</strong> ${patient ? patient.code : 'MED-7821'}<br>
-            <strong>Age:</strong> ${patient ? patient.age : 68} Years
+            <strong>Patient Name:</strong> ${patient ? patient.name : 'Patient'}<br>
+            <strong>Patient ID:</strong> ${patient?.code ? patient.code : 'N/A'}<br>
+            <strong>Age:</strong> ${patient?.age ? `${patient.age} Years` : 'Not Specified'}
           </div>
           <div style="text-align: right;">
             <strong>Generated Date:</strong> ${new Date().toLocaleDateString()}<br>
             <strong>Report Type:</strong> 7-Day Adherence Audit<br>
-            <strong>Emergency Contact:</strong> ${patient ? patient.phone : '+91 98765 43210'}
+            <strong>Emergency Contact:</strong> ${patient?.phone ? patient.phone : 'Not Specified'}
           </div>
         </div>
 

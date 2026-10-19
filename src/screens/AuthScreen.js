@@ -6,31 +6,106 @@ import { useApp } from '../context/AppContext';
 export const AuthScreen = ({ onClose }) => {
   const { loginUser, registerUser } = useApp();
 
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(true);
+
+  // How user wants to register: Patient, Caretaker, or Both!
+  const [isPatientSelected, setIsPatientSelected] = useState(true);
+  const [isCaretakerSelected, setIsCaretakerSelected] = useState(false);
+
+  // Common user fields
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('+91');
-  const [role, setRole] = useState('PATIENT'); // 'PATIENT' or 'CARETAKER'
+  const [phone, setPhone] = useState('');
+
+  // Patient required fields
+  const [emergencyCaretakerPhone, setEmergencyCaretakerPhone] = useState('');
+  const [age, setAge] = useState('');
+
+  // Caretaker required fields
+  const [relation, setRelation] = useState('');
   const [patientCodeToLink, setPatientCodeToLink] = useState('');
 
-  const handleSubmit = () => {
+  const handleTogglePatient = () => {
+    setIsPatientSelected(prev => !prev);
+  };
+
+  const handleToggleCaretaker = () => {
+    setIsCaretakerSelected(prev => !prev);
+  };
+
+  const isBothSelected = isPatientSelected && isCaretakerSelected;
+
+  const handleSubmit = async () => {
     if (isSignUp) {
-      if (!name.trim() || !email.trim() || !password.trim()) {
-        Alert.alert('Required Fields', 'Please fill in your name, email, and password.');
+      // 1. Validate role selection
+      if (!isPatientSelected && !isCaretakerSelected) {
+        Alert.alert('Select Account Type', 'Please choose how you would like to register: Patient, Caretaker, or Both.');
         return;
       }
 
-      registerUser({
+      // 2. Validate common required fields
+      if (!name.trim()) {
+        Alert.alert('Required Field', 'Please enter your full name.');
+        return;
+      }
+      if (!email.trim() || !email.includes('@')) {
+        Alert.alert('Required Field', 'Please enter a valid email address.');
+        return;
+      }
+      if (!password.trim() || password.length < 4) {
+        Alert.alert('Required Field', 'Please create a password of at least 4 characters.');
+        return;
+      }
+      if (!phone.trim()) {
+        Alert.alert('Required Field', 'Please enter your phone number.');
+        return;
+      }
+
+      // 3. Validate Patient required fields
+      if (isPatientSelected) {
+        if (!emergencyCaretakerPhone.trim()) {
+          Alert.alert('Patient Requirement', 'Please provide an Emergency Caretaker Phone Number so SOS calls and missed alerts know whom to contact.');
+          return;
+        }
+        if (!age.trim()) {
+          Alert.alert('Patient Requirement', 'Please enter your age.');
+          return;
+        }
+      }
+
+      // 4. Validate Caretaker required fields
+      if (isCaretakerSelected) {
+        if (!relation.trim()) {
+          Alert.alert('Caretaker Requirement', 'Please specify your relationship to the patient (e.g. Son, Daughter, Spouse, Guardian).');
+          return;
+        }
+      }
+
+      // Determine roles array
+      const selectedRoles = [];
+      if (isPatientSelected) selectedRoles.push('PATIENT');
+      if (isCaretakerSelected) selectedRoles.push('CARETAKER');
+
+      await registerUser({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
         phone: phone.trim(),
-        role,
-        patientCodeToLink: role === 'CARETAKER' ? patientCodeToLink.trim() : null,
+        roles: selectedRoles,
+        emergencyCaretakerPhone: isPatientSelected ? emergencyCaretakerPhone.trim() : '',
+        age: isPatientSelected ? age.trim() : null,
+        relation: isCaretakerSelected ? relation.trim() : '',
+        patientCodeToLink: isCaretakerSelected ? patientCodeToLink.trim() : null,
       });
 
-      Alert.alert('Account Created', `Welcome to MedCompanion, ${name}!`);
+      const modeMessage = isBothSelected 
+        ? 'Registered in Dual Mode (Patient & Caretaker)!'
+        : isPatientSelected 
+          ? 'Registered in Patient Mode!' 
+          : 'Registered in Caretaker Mode!';
+
+      Alert.alert('Account Created', `Welcome to MedCompanion, ${name}! ${modeMessage}`);
       if (onClose) onClose();
     } else {
       if (!email.trim() || !password.trim()) {
@@ -38,7 +113,7 @@ export const AuthScreen = ({ onClose }) => {
         return;
       }
 
-      loginUser(email.trim().toLowerCase(), password);
+      await loginUser(email.trim().toLowerCase(), password);
       Alert.alert('Signed In', `Welcome back!`);
       if (onClose) onClose();
     }
@@ -50,7 +125,7 @@ export const AuthScreen = ({ onClose }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Top Dismiss Button */}
+        {/* Top Dismiss Button (if modal) */}
         {onClose && (
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
             <Ionicons name="close" size={24} color="#64748B" />
@@ -63,10 +138,12 @@ export const AuthScreen = ({ onClose }) => {
             <Ionicons name="medical" size={40} color="#FFFFFF" />
           </View>
           <Text style={styles.appName}>MedCompanion</Text>
-          <Text style={styles.appTagline}>Secure Patient & Caretaker Access</Text>
+          <Text style={styles.appTagline}>
+            {isSignUp ? 'Personalized Medication & Caretaker Companion' : 'Sign in to access your account'}
+          </Text>
         </View>
 
-        {/* Tab Switcher */}
+        {/* Tab Switcher: Sign In vs Create Account */}
         <View style={styles.tabContainer}>
           <TouchableOpacity 
             style={[styles.tabBtn, !isSignUp && styles.tabBtnActive]} 
@@ -82,105 +159,233 @@ export const AuthScreen = ({ onClose }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Role Selector (on signup) */}
-        {isSignUp && (
-          <View style={styles.roleSelectionBox}>
-            <Text style={styles.fieldLabel}>Select Account Mode</Text>
-            <View style={styles.roleRow}>
-              <TouchableOpacity
-                style={[styles.roleCard, role === 'PATIENT' && styles.roleCardActive]}
-                onPress={() => setRole('PATIENT')}
-              >
-                <Ionicons name="person" size={24} color={role === 'PATIENT' ? '#0D9488' : '#64748B'} />
-                <Text style={[styles.roleCardTitle, role === 'PATIENT' && styles.roleCardTitleActive]}>
-                  Patient
-                </Text>
-                <Text style={styles.roleCardSub}>For elderly taking medicines</Text>
-              </TouchableOpacity>
+        {/* SIGN UP SECTION: "How would you like to register?" */}
+        {isSignUp ? (
+          <>
+            <View style={styles.roleSelectionBox}>
+              <Text style={styles.roleSectionTitle}>How would you like to register?</Text>
+              <Text style={styles.roleSectionSubtitle}>
+                Select one or both options to customize your app experience:
+              </Text>
 
-              <TouchableOpacity
-                style={[styles.roleCard, role === 'CARETAKER' && styles.roleCardActive]}
-                onPress={() => setRole('CARETAKER')}
-              >
-                <Ionicons name="shield-checkmark" size={24} color={role === 'CARETAKER' ? '#0D9488' : '#64748B'} />
-                <Text style={[styles.roleCardTitle, role === 'CARETAKER' && styles.roleCardTitleActive]}>
-                  Caretaker
-                </Text>
-                <Text style={styles.roleCardSub}>For family & guardians</Text>
-              </TouchableOpacity>
+              <View style={styles.roleOptionsGrid}>
+                {/* 1. Patient Mode Checkable Card */}
+                <TouchableOpacity
+                  style={[
+                    styles.roleSelectCard,
+                    isPatientSelected && styles.roleSelectCardActive
+                  ]}
+                  onPress={handleTogglePatient}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.roleCardTopRow}>
+                    <View style={[styles.roleIconCircle, isPatientSelected && styles.roleIconCircleActive]}>
+                      <Ionicons 
+                        name="person" 
+                        size={22} 
+                        color={isPatientSelected ? '#FFFFFF' : '#0D9488'} 
+                      />
+                    </View>
+                    <View style={[styles.checkboxCircle, isPatientSelected && styles.checkboxCircleActive]}>
+                      {isPatientSelected && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
+                    </View>
+                  </View>
+
+                  <Text style={[styles.roleCardTitle, isPatientSelected && styles.roleCardTitleActive]}>
+                    Patient Mode
+                  </Text>
+                  <Text style={styles.roleCardDescription}>
+                    I take medicines and need alarms, countdown timer, voice readouts, and 1-tap SOS.
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 2. Caretaker Mode Checkable Card */}
+                <TouchableOpacity
+                  style={[
+                    styles.roleSelectCard,
+                    isCaretakerSelected && styles.roleSelectCardActive
+                  ]}
+                  onPress={handleToggleCaretaker}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.roleCardTopRow}>
+                    <View style={[styles.roleIconCircle, isCaretakerSelected && styles.roleIconCircleActive]}>
+                      <Ionicons 
+                        name="shield-checkmark" 
+                        size={22} 
+                        color={isCaretakerSelected ? '#FFFFFF' : '#0D9488'} 
+                      />
+                    </View>
+                    <View style={[styles.checkboxCircle, isCaretakerSelected && styles.checkboxCircleActive]}>
+                      {isCaretakerSelected && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
+                    </View>
+                  </View>
+
+                  <Text style={[styles.roleCardTitle, isCaretakerSelected && styles.roleCardTitleActive]}>
+                    Caretaker Mode
+                  </Text>
+                  <Text style={styles.roleCardDescription}>
+                    I monitor loved ones' daily prescriptions, manage schedules, and receive missed pill alerts.
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Both Modes Selected Highlight Banner */}
+              {isBothSelected && (
+                <View style={styles.bothSelectedBanner}>
+                  <Ionicons name="flash" size={18} color="#0D9488" />
+                  <Text style={styles.bothSelectedText}>
+                    Dual Mode Enabled! You will be registered as both Patient and Caretaker, with dedicated pages for each.
+                  </Text>
+                </View>
+              )}
             </View>
-          </View>
-        )}
 
-        {/* Input Fields */}
-        <View style={styles.formCard}>
-          {isSignUp && (
-            <>
-              <Text style={styles.fieldLabel}>Full Name</Text>
+            {/* Required Entries Form */}
+            <View style={styles.formCard}>
+              <Text style={styles.formSectionHeader}>Required Account Details</Text>
+
+              {/* Common: Full Name */}
+              <Text style={styles.fieldLabel}>Full Name *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Enter your name"
+                placeholder="Enter your full name"
                 value={name}
                 onChangeText={setName}
               />
-            </>
-          )}
 
-          <Text style={styles.fieldLabel}>Email Address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="name@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
-
-          <Text style={styles.fieldLabel}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-
-          {isSignUp && (
-            <>
-              <Text style={styles.fieldLabel}>Emergency Phone</Text>
+              {/* Common: Email Address */}
+              <Text style={styles.fieldLabel}>Email Address *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="+91 98765 43210"
+                placeholder="name@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+              />
+
+              {/* Common: Password */}
+              <Text style={styles.fieldLabel}>Password *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Create a password (min 4 characters)"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+              />
+
+              {/* Common: Phone */}
+              <Text style={styles.fieldLabel}>Your Mobile Phone *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. +91 9876543210"
                 keyboardType="phone-pad"
                 value={phone}
                 onChangeText={setPhone}
               />
 
-              {role === 'CARETAKER' && (
-                <>
+              {/* PATIENT REQUIRED ENTRIES */}
+              {isPatientSelected && (
+                <View style={styles.roleSubformBox}>
+                  <View style={styles.subformHeader}>
+                    <Ionicons name="person-outline" size={18} color="#0D9488" />
+                    <Text style={styles.subformTitle}>Patient Mode Information</Text>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Emergency Caretaker Phone Number *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. +91 9876543210 (Caretaker to call / alert)"
+                    keyboardType="phone-pad"
+                    value={emergencyCaretakerPhone}
+                    onChangeText={setEmergencyCaretakerPhone}
+                  />
+
+                  <Text style={styles.fieldLabel}>Patient Age *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. 68"
+                    keyboardType="numeric"
+                    value={age}
+                    onChangeText={setAge}
+                  />
+
+                  <View style={styles.infoNoteBox}>
+                    <Ionicons name="information-circle-outline" size={16} color="#0284C7" />
+                    <Text style={styles.infoNoteText}>
+                      A permanent 6-digit Patient Code (e.g. MED-XXXX) will be generated for your account so caretakers can pair with you.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* CARETAKER REQUIRED ENTRIES */}
+              {isCaretakerSelected && (
+                <View style={[styles.roleSubformBox, { borderColor: '#E2E8F0' }]}>
+                  <View style={styles.subformHeader}>
+                    <Ionicons name="shield-checkmark-outline" size={18} color="#0D9488" />
+                    <Text style={styles.subformTitle}>Caretaker Mode Information</Text>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Relationship to Patient *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Son, Daughter, Spouse, Guardian"
+                    value={relation}
+                    onChangeText={setRelation}
+                  />
+
                   <Text style={styles.fieldLabel}>Patient Pairing Code (Optional)</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g. MED-7821"
+                    placeholder="e.g. MED-7821 (or link later from dashboard)"
                     autoCapitalize="characters"
                     value={patientCodeToLink}
                     onChangeText={setPatientCodeToLink}
                   />
-                </>
+                </View>
               )}
-            </>
-          )}
 
-          {/* Submit Button */}
-          <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-            <Text style={styles.submitBtnText}>
-              {isSignUp ? 'Complete Registration' : 'Sign In'}
-            </Text>
-            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+              {/* Complete Registration Button */}
+              <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
+                <Text style={styles.submitBtnText}>Complete Registration</Text>
+                <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          /* SIGN IN SECTION */
+          <View style={styles.formCard}>
+            <Text style={styles.formSectionHeader}>Welcome Back</Text>
 
-        <View style={{ height: 40 }} />
+            <Text style={styles.fieldLabel}>Email Address *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="name@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={setEmail}
+            />
+
+            <Text style={styles.fieldLabel}>Password *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="••••••••"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+
+            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
+              <Text style={styles.submitBtnText}>Sign In</Text>
+              <Ionicons name="log-in-outline" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={{ height: 50 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -192,8 +397,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   scrollContent: {
-    padding: 24,
-    paddingTop: Platform.OS === 'android' ? 44 : 20,
+    padding: 20,
+    paddingTop: Platform.OS === 'android' ? 40 : 20,
   },
   closeBtn: {
     alignSelf: 'flex-end',
@@ -207,21 +412,21 @@ const styles = StyleSheet.create({
   },
   brandHeader: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: '#0D9488',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
     shadowColor: '#0D9488',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   appName: {
     fontSize: 24,
@@ -238,15 +443,15 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#E2E8F0',
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 4,
     marginBottom: 20,
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 10,
+    borderRadius: 9,
   },
   tabBtnActive: {
     backgroundColor: '#FFFFFF',
@@ -265,88 +470,193 @@ const styles = StyleSheet.create({
     color: '#0D9488',
   },
   roleSelectionBox: {
-    marginBottom: 16,
-  },
-  roleRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 6,
-  },
-  roleCard: {
-    flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-  },
-  roleCardActive: {
-    borderColor: '#0D9488',
-    backgroundColor: '#F0FDFA',
-  },
-  roleCardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#475569',
-    marginTop: 6,
-  },
-  roleCardTitleActive: {
-    color: '#0D9488',
-  },
-  roleCardSub: {
-    fontSize: 11,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  formCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 18,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
     elevation: 2,
   },
-  fieldLabel: {
+  roleSectionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  roleSectionSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginBottom: 14,
+  },
+  roleOptionsGrid: {
+    gap: 12,
+  },
+  roleSelectCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    padding: 14,
+  },
+  roleSelectCardActive: {
+    borderColor: '#0D9488',
+    backgroundColor: '#F0FDFA',
+  },
+  roleCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  roleIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleIconCircleActive: {
+    backgroundColor: '#0D9488',
+  },
+  checkboxCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#94A3B8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxCircleActive: {
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
+  },
+  roleCardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#334155',
+    marginBottom: 4,
+  },
+  roleCardTitleActive: {
+    color: '#0D9488',
+  },
+  roleCardDescription: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+  },
+  bothSelectedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#CCFBF1',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 12,
+    gap: 8,
+  },
+  bothSelectedText: {
+    flex: 1,
     fontSize: 12,
     fontWeight: '700',
-    color: '#475569',
-    marginTop: 10,
+    color: '#0F766E',
+    lineHeight: 16,
+  },
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  formSectionHeader: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: 8,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
     marginBottom: 6,
-    textTransform: 'uppercase',
+    marginTop: 10,
   },
   input: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#CBD5E1',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
     color: '#0F172A',
+  },
+  roleSubformBox: {
+    marginTop: 16,
+    padding: 14,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+  },
+  subformHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  subformTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0D9488',
+  },
+  infoNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E0F2FE',
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 10,
+  },
+  infoNoteText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#0369A1',
+    lineHeight: 15,
   },
   submitBtn: {
     flexDirection: 'row',
     backgroundColor: '#0D9488',
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
     gap: 8,
+    marginTop: 20,
     shadowColor: '#0D9488',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 6,
+    elevation: 3,
   },
   submitBtnText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

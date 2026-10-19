@@ -4,31 +4,44 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 
 export const PairPatientModal = ({ visible, onClose }) => {
-  const { addPatient } = useApp();
+  const { addPatient, pairPatientByCode } = useApp();
 
+  const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
-  const [phone, setPhone] = useState('+91');
-  const [relation, setRelation] = useState('Father');
+  const [phone, setPhone] = useState('');
+  const [relation, setRelation] = useState('Family');
 
-  const relations = ['Father', 'Mother', 'Grandfather', 'Grandmother', 'Other'];
+  const relations = ['Father', 'Mother', 'Spouse', 'Grandparent', 'Child', 'Other'];
 
-  const handlePair = () => {
+  const handlePair = async () => {
+    // If linking directly by 6-digit code:
+    if (code.trim()) {
+      await pairPatientByCode(code.trim().toUpperCase(), name.trim() || 'Monitored Patient');
+      setCode('');
+      setName('');
+      onClose();
+      Alert.alert('Patient Linked!', `Patient code ${code.trim().toUpperCase()} linked to your Caretaker Dashboard.`);
+      return;
+    }
+
     if (!name.trim()) {
-      Alert.alert('Required', 'Please enter patient name.');
+      Alert.alert('Required', 'Please enter patient name or their 6-digit code.');
       return;
     }
 
     addPatient({
       name: name.trim(),
-      age: parseInt(age) || 65,
-      phone: phone.trim() || '+919876543210',
+      age: parseInt(age, 10) || 65,
+      phone: phone.trim(),
       relation,
     });
 
     // Reset & close
+    setCode('');
     setName('');
     setAge('');
+    setPhone('');
     onClose();
     Alert.alert('Patient Linked!', `${name} is now connected to your Caretaker Dashboard.`);
   };
@@ -46,14 +59,24 @@ export const PairPatientModal = ({ visible, onClose }) => {
           </View>
 
           <Text style={styles.subInfo}>
-            Enter patient details or their 6-digit App Code to monitor their daily medications remotely.
+            Enter the patient's 6-digit App Code (MED-XXXX) or add their details manually to monitor their daily medications remotely.
           </Text>
 
-          {/* Form */}
-          <Text style={styles.label}>Patient Name</Text>
+          {/* Code Link Box */}
+          <Text style={styles.label}>Patient's 6-Digit Code (Optional)</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g. Grandma (Mary)"
+            placeholder="e.g. MED-7821"
+            autoCapitalize="characters"
+            value={code}
+            onChangeText={setCode}
+          />
+
+          {/* Manual Details Form */}
+          <Text style={styles.label}>Patient Full Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. Enter patient name"
             value={name}
             onChangeText={setName}
           />
@@ -63,7 +86,7 @@ export const PairPatientModal = ({ visible, onClose }) => {
               <Text style={styles.label}>Age</Text>
               <TextInput
                 style={styles.input}
-                placeholder="e.g. 72"
+                placeholder="e.g. 70"
                 keyboardType="numeric"
                 value={age}
                 onChangeText={setAge}
@@ -74,7 +97,7 @@ export const PairPatientModal = ({ visible, onClose }) => {
               <Text style={styles.label}>Emergency Phone</Text>
               <TextInput
                 style={styles.input}
-                placeholder="+91 98765 43210"
+                placeholder="e.g. +91 9876543210"
                 keyboardType="phone-pad"
                 value={phone}
                 onChangeText={setPhone}

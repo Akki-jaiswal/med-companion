@@ -48,57 +48,20 @@ const parseTimeToTimestamp = (timeStr, createdAt = Date.now()) => {
 };
 
 export const AppProvider = ({ children }) => {
-  // Current Logged-in User Profile (Dynamic, starts with active user or null)
+  // Current Logged-in User Profile (Dynamic, starts as null until user registers or logs in)
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('PATIENT');
-  const [selectedPatientId, setSelectedPatientId] = useState('p1');
-  const [caretakerPhone, setCaretakerPhone] = useState('+919876543210');
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [caretakerPhone, setCaretakerPhone] = useState('');
 
-  // Dynamic Patients list
-  const [patients, setPatients] = useState([
-    {
-      id: 'p1',
-      name: 'My Patient',
-      age: 68,
-      code: 'MED-7821',
-      phone: '+919876543210',
-      relation: 'Family Member',
-    }
-  ]);
+  // 100% Dynamic Patients list (Starts completely empty)
+  const [patients, setPatients] = useState([]);
 
-  // Dynamic Medications list
-  const [medications, setMedications] = useState([
-    {
-      id: 'm1',
-      patientId: 'p1',
-      name: 'Amlodipine (Blood Pressure)',
-      dosage: '5 mg - 1 Tablet',
-      time: '08:00 AM',
-      targetTimestamp: parseTimeToTimestamp('08:00 AM'),
-      mealCondition: 'After Breakfast',
-      color: '#3B82F6',
-      shape: 'circle',
-      statusToday: 'taken',
-      takenAt: '08:05 AM',
-    },
-    {
-      id: 'm2',
-      patientId: 'p1',
-      name: 'Metformin (Sugar)',
-      dosage: '500 mg - 1 Tablet',
-      time: 'In 1 Minute',
-      targetTimestamp: Date.now() + 50 * 1000, // Rings automatically 50s from app launch
-      mealCondition: 'After Lunch',
-      color: '#EF4444',
-      shape: 'capsule',
-      statusToday: 'pending',
-      takenAt: null,
-    }
-  ]);
+  // 100% Dynamic Medications list (Starts completely empty)
+  const [medications, setMedications] = useState([]);
 
-  const [adherenceHistory, setAdherenceHistory] = useState([
-    { date: new Date().toISOString().split('T')[0], pillName: 'Amlodipine', time: '08:00 AM', status: 'Taken', onTime: true }
-  ]);
+  // 100% Dynamic Adherence History (Starts completely empty)
+  const [adherenceHistory, setAdherenceHistory] = useState([]);
 
   const [activeAlarmMed, setActiveAlarmMed] = useState(null);
   const [escalationAlert, setEscalationAlert] = useState(null);
@@ -160,26 +123,27 @@ export const AppProvider = ({ children }) => {
         if (savedUser) {
           const userObj = JSON.parse(savedUser);
           setCurrentUser(userObj);
-          setUserRole(userObj.role);
+          setUserRole(userObj.primaryRole || (Array.isArray(userObj.roles) ? userObj.roles[0] : userObj.role) || 'PATIENT');
+          if (userObj.emergencyCaretakerPhone) {
+            setCaretakerPhone(userObj.emergencyCaretakerPhone);
+          }
         } else {
-          // Default initial profile if user hasn't registered yet
-          const defaultUser = {
-            id: 'u_default',
-            name: 'Patient User',
-            email: 'user@medcompanion.com',
-            role: 'PATIENT',
-            phone: '+919876543210',
-            pairingCode: 'MED-7821',
-            isAuthenticated: true,
-          };
-          setCurrentUser(defaultUser);
+          // No user logged in - start cleanly with null
+          setCurrentUser(null);
         }
 
         const savedMeds = await AsyncStorage.getItem('@medications');
         if (savedMeds) setMedications(JSON.parse(savedMeds));
 
         const savedPatients = await AsyncStorage.getItem('@patients');
-        if (savedPatients) setPatients(JSON.parse(savedPatients));
+        if (savedPatients) {
+          const parsed = JSON.parse(savedPatients);
+          setPatients(parsed);
+          if (parsed.length > 0) setSelectedPatientId(parsed[0].id);
+        }
+
+        const savedHistory = await AsyncStorage.getItem('@adherence_history');
+        if (savedHistory) setAdherenceHistory(JSON.parse(savedHistory));
       } catch (e) {
         console.log('Error reading storage', e);
       }
@@ -198,6 +162,8 @@ export const AppProvider = ({ children }) => {
 
   // Real-Time Cloud Listeners (Subscribes to Firestore when connected)
   useEffect(() => {
+    if (!selectedPatientId) return;
+
     const unsubscribeMeds = subscribeToPatientMedications(selectedPatientId, (cloudMeds) => {
       if (cloudMeds && cloudMeds.length > 0) {
         setMedications(cloudMeds);
@@ -225,44 +191,125 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Register New User (Dynamic Name & Code)
+  // Register New User (Dynamic Name, Dynamic Roles: Patient, Caretaker, or Both)
   const registerUser = async (userData) => {
-    const code = userData.role === 'PATIENT' ? 'MED-' + Math.floor(1000 + Math.random() * 9000) : null;
+    const roles = Array.isArray(userData.roles) && userData.roles.length > 0
+      ? userData.roles
+      : [userData.role || 'PATIENT'];
+
+    const isPatient = roles.includes('PATIENT');
+    const isCaretaker = roles.includes('CARETAKER');
+
+    // Dynamic random pairing code if Patient
+    const pairingCode = isPatient ? 'MED-' + Math.floor(1000 + Math.random() * 9000) : null;
+    const initialPrimaryRole = isPatient ? 'PATIENT' : 'CARETAKER';
+
     const newUser = {
-      ...userData,
       id: 'u_' + Date.now(),
-      pairingCode: code,
+      name: userData.name.trim(),
+      email: userData.email.trim().toLowerCase(),
+      phone: userData.phone ? userData.phone.trim() : '',
+      roles: roles,
+      primaryRole: initialPrimaryRole,
+      pairingCode: pairingCode,
+      emergencyCaretakerPhone: userData.emergencyCaretakerPhone ? userData.emergencyCaretakerPhone.trim() : '',
+      age: userData.age ? parseInt(userData.age, 10) : null,
+      relation: userData.relation ? userData.relation.trim() : '',
       isAuthenticated: true,
+      registeredAt: new Date().toISOString(),
     };
 
     setCurrentUser(newUser);
-    setUserRole(newUser.role);
+    setUserRole(initialPrimaryRole);
+    if (newUser.emergencyCaretakerPhone) {
+      setCaretakerPhone(newUser.emergencyCaretakerPhone);
+    }
+
     await AsyncStorage.setItem('@med_user', JSON.stringify(newUser));
 
-    if (userData.patientCodeToLink) {
-      pairPatientByCode(userData.patientCodeToLink, 'Monitored Patient');
+    // If patient mode was selected, initialize patient entry
+    if (isPatient) {
+      const patientSelf = {
+        id: newUser.id,
+        name: newUser.name,
+        age: newUser.age || 65,
+        code: pairingCode,
+        phone: newUser.phone,
+        emergencyPhone: newUser.emergencyCaretakerPhone,
+        relation: 'Self',
+      };
+      setPatients([patientSelf]);
+      setSelectedPatientId(newUser.id);
+      await AsyncStorage.setItem('@patients', JSON.stringify([patientSelf]));
+    } else {
+      setPatients([]);
+      setSelectedPatientId(null);
+    }
+
+    // If caretaker mode provided a patient code to link right away:
+    if (isCaretaker && userData.patientCodeToLink) {
+      await pairPatientByCode(userData.patientCodeToLink.trim().toUpperCase(), 'Monitored Patient');
     }
   };
 
   const loginUser = async (email, password) => {
-    const userObj = {
-      ...currentUser,
-      email,
+    const savedUserStr = await AsyncStorage.getItem('@med_user');
+    if (savedUserStr) {
+      const savedUser = JSON.parse(savedUserStr);
+      if (savedUser.email?.toLowerCase() === email.trim().toLowerCase()) {
+        savedUser.isAuthenticated = true;
+        setCurrentUser(savedUser);
+        const role = savedUser.primaryRole || (Array.isArray(savedUser.roles) ? savedUser.roles[0] : 'PATIENT');
+        setUserRole(role);
+        if (savedUser.emergencyCaretakerPhone) {
+          setCaretakerPhone(savedUser.emergencyCaretakerPhone);
+        }
+        await AsyncStorage.setItem('@med_user', JSON.stringify(savedUser));
+        return true;
+      }
+    }
+
+    // If logging in for the first time
+    const fallbackUser = {
+      id: 'u_' + Date.now(),
+      name: email.split('@')[0],
+      email: email.trim().toLowerCase(),
+      phone: '',
+      roles: ['PATIENT'],
+      primaryRole: 'PATIENT',
+      pairingCode: 'MED-' + Math.floor(1000 + Math.random() * 9000),
+      emergencyCaretakerPhone: '',
       isAuthenticated: true,
     };
-    setCurrentUser(userObj);
-    await AsyncStorage.setItem('@med_user', JSON.stringify(userObj));
+    setCurrentUser(fallbackUser);
+    setUserRole('PATIENT');
+    await AsyncStorage.setItem('@med_user', JSON.stringify(fallbackUser));
     return true;
   };
 
   const logoutUser = async () => {
     setCurrentUser(null);
+    setUserRole('PATIENT');
+    setMedications([]);
+    setPatients([]);
+    setSelectedPatientId(null);
+    setAdherenceHistory([]);
+    setActiveAlarmMed(null);
+    setEscalationAlert(null);
     await AsyncStorage.removeItem('@med_user');
+    await AsyncStorage.removeItem('@medications');
+    await AsyncStorage.removeItem('@patients');
+    await AsyncStorage.removeItem('@adherence_history');
+  };
+
+  const switchUserRole = (newRole) => {
+    setUserRole(newRole);
+    setCurrentUser(prev => prev ? ({ ...prev, primaryRole: newRole }) : null);
   };
 
   const handleSetRole = (role) => {
     setUserRole(role);
-    setCurrentUser(prev => prev ? ({ ...prev, role }) : null);
+    setCurrentUser(prev => prev ? ({ ...prev, primaryRole: role }) : null);
   };
 
   // Mark medicine as Taken
@@ -422,9 +469,9 @@ export const AppProvider = ({ children }) => {
       const newP = {
         id: 'p_' + Date.now(),
         name: fallbackName,
-        age: 70,
+        age: 65,
         code: code.toUpperCase(),
-        phone: '+919876543210',
+        phone: '',
         relation: 'Monitored',
       };
       setPatients(prev => [...prev, newP]);
@@ -440,6 +487,7 @@ export const AppProvider = ({ children }) => {
         setCurrentUser,
         userRole,
         setUserRole: handleSetRole,
+        switchUserRole,
         loginUser,
         registerUser,
         logoutUser,

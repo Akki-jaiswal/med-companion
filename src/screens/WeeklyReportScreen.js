@@ -5,15 +5,35 @@ import { useApp } from '../context/AppContext';
 import { generateAndShareAdherenceReport } from '../services/pdfService';
 
 export const WeeklyReportScreen = ({ onBack }) => {
-  const { patients, selectedPatientId, medications, adherenceHistory } = useApp();
+  const { patients, selectedPatientId, medications, adherenceHistory, currentUser } = useApp();
 
-  const currentPatient = patients.find(p => p.id === selectedPatientId) || patients[0];
-  const patientMeds = medications.filter(m => m.patientId === currentPatient.id);
+  const currentPatient = patients.find(p => p.id === selectedPatientId) || patients[0] || (currentUser?.roles?.includes('PATIENT') ? {
+    name: currentUser.name,
+    code: currentUser.pairingCode,
+    phone: currentUser.phone,
+    age: currentUser.age || 65,
+  } : null);
+
+  const patientMeds = currentPatient ? medications.filter(m => !m.patientId || m.patientId === currentPatient.id) : medications;
 
   const totalDoses = adherenceHistory.length;
   const takenDoses = adherenceHistory.filter(h => h.status === 'Taken').length;
   const missedDoses = adherenceHistory.filter(h => h.status === 'Missed').length;
   const rate = totalDoses > 0 ? Math.round((takenDoses / totalDoses) * 100) : 100;
+
+  const handleExportPDF = () => {
+    if (!currentPatient && patientMeds.length === 0) {
+      alert('No patient data available to generate a report. Add a medicine or link a patient first.');
+      return;
+    }
+    const reportPatient = currentPatient || {
+      name: currentUser?.name || 'Patient',
+      code: currentUser?.pairingCode || 'N/A',
+      phone: currentUser?.phone || 'N/A',
+      age: currentUser?.age || 65,
+    };
+    generateAndShareAdherenceReport(reportPatient, patientMeds, adherenceHistory);
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -52,7 +72,7 @@ export const WeeklyReportScreen = ({ onBack }) => {
       {/* DOWNLOAD / SHARE PDF REPORT BUTTON */}
       <TouchableOpacity 
         style={styles.pdfBtn}
-        onPress={() => generateAndShareAdherenceReport(currentPatient, patientMeds, adherenceHistory)}
+        onPress={handleExportPDF}
       >
         <Ionicons name="cloud-download-outline" size={22} color="#FFFFFF" />
         <Text style={styles.pdfBtnText}>Export Doctor-Ready PDF Report</Text>
@@ -60,30 +80,39 @@ export const WeeklyReportScreen = ({ onBack }) => {
 
       {/* History Log */}
       <Text style={styles.historyHeading}>7-Day Adherence Log</Text>
-      {adherenceHistory.map((item, idx) => (
-        <View key={idx} style={styles.historyItem}>
-          <View style={[
-            styles.historyIconCircle, 
-            { backgroundColor: item.status === 'Taken' ? '#DCFCE7' : '#FEE2E2' }
-          ]}>
-            <Ionicons 
-              name={item.status === 'Taken' ? 'checkmark' : 'close'} 
-              size={18} 
-              color={item.status === 'Taken' ? '#166534' : '#991B1B'} 
-            />
+      {adherenceHistory.length > 0 ? (
+        adherenceHistory.map((item, idx) => (
+          <View key={idx} style={styles.historyItem}>
+            <View style={[
+              styles.historyIconCircle, 
+              { backgroundColor: item.status === 'Taken' ? '#DCFCE7' : '#FEE2E2' }
+            ]}>
+              <Ionicons 
+                name={item.status === 'Taken' ? 'checkmark' : 'close'} 
+                size={18} 
+                color={item.status === 'Taken' ? '#166534' : '#991B1B'} 
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.historyPillName}>{item.pillName}</Text>
+              <Text style={styles.historyDate}>{item.date} • {item.time}</Text>
+            </View>
+            <Text style={[
+              styles.historyStatusText, 
+              { color: item.status === 'Taken' ? '#16A34A' : '#DC2626' }
+            ]}>
+              {item.status.toUpperCase()}
+            </Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.historyPillName}>{item.pillName}</Text>
-            <Text style={styles.historyDate}>{item.date} • {item.time}</Text>
-          </View>
-          <Text style={[
-            styles.historyStatusText, 
-            { color: item.status === 'Taken' ? '#16A34A' : '#DC2626' }
-          ]}>
-            {item.status.toUpperCase()}
+        ))
+      ) : (
+        <View style={{ backgroundColor: '#FFFFFF', padding: 20, borderRadius: 14, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#64748B' }}>No Adherence Records Yet</Text>
+          <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 4, textAlign: 'center' }}>
+            Logs will be recorded automatically when medications are marked as Taken or Missed.
           </Text>
         </View>
-      ))}
+      )}
 
       <View style={{ height: 40 }} />
     </ScrollView>

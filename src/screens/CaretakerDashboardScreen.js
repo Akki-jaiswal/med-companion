@@ -21,7 +21,7 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
   const [pairModalVisible, setPairModalVisible] = useState(false);
 
   const currentPatient = patients.find(p => p.id === selectedPatientId) || patients[0];
-  const patientMeds = medications.filter(m => m.patientId === currentPatient.id);
+  const patientMeds = currentPatient ? medications.filter(m => m.patientId === currentPatient.id) : [];
 
   // Stats calculation
   const totalDoses = adherenceHistory.length;
@@ -44,145 +44,181 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Patients Selector Tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.patientTabs}>
-        {patients.map((p) => {
-          const isSelected = p.id === currentPatient.id;
-          return (
-            <TouchableOpacity
-              key={p.id}
-              style={[styles.patientTabItem, isSelected && styles.patientTabItemActive]}
-              onPress={() => setSelectedPatientId(p.id)}
-            >
-              <Ionicons 
-                name="person-circle" 
-                size={22} 
-                color={isSelected ? '#FFFFFF' : '#0D9488'} 
-              />
-              <Text style={[styles.patientTabText, isSelected && styles.patientTabTextActive]}>
-                {p.name}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* 🚨 ESCALATION ALERT BANNER (If patient misses alarm) */}
-      {escalationAlert && (
-        <View style={styles.escalationCard}>
-          <View style={styles.escalationHeader}>
-            <Ionicons name="warning" size={26} color="#DC2626" />
-            <Text style={styles.escalationTitle}>🚨 MEDICATION MISSED ALERT</Text>
+      {/* If No Patients Linked Yet -> Empty State */}
+      {!currentPatient ? (
+        <View style={styles.noPatientCard}>
+          <View style={styles.noPatientIconCircle}>
+            <Ionicons name="people-outline" size={44} color="#0D9488" />
           </View>
-          <Text style={styles.escalationMessage}>
-            {escalationAlert.patientName} did not take <Text style={{ fontWeight: 'bold' }}>{escalationAlert.pillName}</Text> scheduled at {escalationAlert.scheduledTime}.
+          <Text style={styles.noPatientTitle}>No Patients Linked Yet</Text>
+          <Text style={styles.noPatientSub}>
+            You haven't connected any patients to your Caretaker account. Enter your loved one's 6-digit Code (MED-XXXX) or add their details to start remote medication monitoring.
           </Text>
-          
-          <View style={styles.escalationActions}>
-            <TouchableOpacity 
-              style={styles.callNowBtn}
-              onPress={() => callCaretaker(currentPatient.phone)}
-            >
-              <Ionicons name="call" size={18} color="#FFFFFF" />
-              <Text style={styles.callNowBtnText}>Call Patient Now</Text>
-            </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.dismissBtn}
-              onPress={() => setEscalationAlert(null)}
-            >
-              <Text style={styles.dismissBtnText}>Dismiss</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity 
+            style={styles.linkFirstPatientBtn}
+            onPress={() => setPairModalVisible(true)}
+          >
+            <Ionicons name="link-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.linkFirstPatientText}>Link Patient (Code or Name)</Text>
+          </TouchableOpacity>
         </View>
+      ) : (
+        <>
+          {/* Patients Selector Tabs */}
+          {patients.length > 1 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.patientTabs}>
+              {patients.map((p) => {
+                const isSelected = p.id === currentPatient.id;
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[styles.patientTabItem, isSelected && styles.patientTabItemActive]}
+                    onPress={() => setSelectedPatientId(p.id)}
+                  >
+                    <Ionicons 
+                      name="person-circle" 
+                      size={22} 
+                      color={isSelected ? '#FFFFFF' : '#0D9488'} 
+                    />
+                    <Text style={[styles.patientTabText, isSelected && styles.patientTabTextActive]}>
+                      {p.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          {/* 🚨 ESCALATION ALERT BANNER (If patient misses alarm) */}
+          {escalationAlert && (
+            <View style={styles.escalationCard}>
+              <View style={styles.escalationHeader}>
+                <Ionicons name="warning" size={26} color="#DC2626" />
+                <Text style={styles.escalationTitle}>🚨 MEDICATION MISSED ALERT</Text>
+              </View>
+              <Text style={styles.escalationMessage}>
+                {escalationAlert.patientName} did not take <Text style={{ fontWeight: 'bold' }}>{escalationAlert.pillName}</Text> scheduled at {escalationAlert.scheduledTime}.
+              </Text>
+              
+              <View style={styles.escalationActions}>
+                <TouchableOpacity 
+                  style={styles.callNowBtn}
+                  onPress={() => callCaretaker(currentPatient.phone)}
+                >
+                  <Ionicons name="call" size={18} color="#FFFFFF" />
+                  <Text style={styles.callNowBtnText}>Call Patient Now</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.dismissBtn}
+                  onPress={() => setEscalationAlert(null)}
+                >
+                  <Text style={styles.dismissBtnText}>Dismiss</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Active Patient Card & Actions */}
+          <View style={styles.patientProfileCard}>
+            <View style={styles.profileRow}>
+              <View style={styles.profileAvatar}>
+                <Ionicons name="person" size={28} color="#0D9488" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.profileName}>{currentPatient.name}</Text>
+                <Text style={styles.profileSub}>
+                  {currentPatient.age ? `Age: ${currentPatient.age} yrs • ` : ''}Pairing Code: <Text style={{ fontWeight: 'bold', color: '#0D9488' }}>{currentPatient.code || 'N/A'}</Text>
+                </Text>
+              </View>
+              
+              {/* Quick Direct Call Button */}
+              {currentPatient.phone ? (
+                <TouchableOpacity 
+                  style={styles.directCallCircle}
+                  onPress={() => callCaretaker(currentPatient.phone)}
+                >
+                  <Ionicons name="call" size={20} color="#0D9488" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Adherence Rate Mini-Bar */}
+            <View style={styles.adherenceMiniCard}>
+              <View style={styles.adherenceMiniHeader}>
+                <Text style={styles.adherenceRateText}>{adherenceRate}% Compliance</Text>
+                <Text style={styles.adherenceSubText}>Past 7 Days</Text>
+              </View>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${adherenceRate}%` }]} />
+              </View>
+            </View>
+
+            {/* 3 Main Action Buttons from Flowchart */}
+            <View style={styles.actionGrid}>
+              <TouchableOpacity 
+                style={styles.actionGridBtn}
+                onPress={() => setAddMedModalVisible(true)}
+              >
+                <Ionicons name="add-circle" size={22} color="#0D9488" />
+                <Text style={styles.actionGridText}>Add Medicine</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.actionGridBtn}
+                onPress={onNavigateReport}
+              >
+                <Ionicons name="document-text" size={22} color="#0D9488" />
+                <Text style={styles.actionGridText}>Weekly Report</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.actionGridBtn}
+                onPress={() => callCaretaker(currentPatient.phone)}
+              >
+                <Ionicons name="call" size={22} color="#0D9488" />
+                <Text style={styles.actionGridText}>Call Patient</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Prescriptions List */}
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionHeading}>Patient Prescriptions</Text>
+            <Text style={styles.countBadge}>{patientMeds.length} active</Text>
+          </View>
+
+          {patientMeds.length > 0 ? (
+            patientMeds.map((med) => (
+              <View key={med.id} style={styles.medItemCard}>
+                <View style={[styles.pillColorDot, { backgroundColor: med.color || '#0D9488' }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.medItemTitle}>{med.name}</Text>
+                  <Text style={styles.medItemDetail}>{med.dosage} • {med.time}</Text>
+                  <Text style={styles.medItemMeal}>🍽️ {med.mealCondition}</Text>
+                </View>
+                <View style={[
+                  styles.statusTag, 
+                  med.statusToday === 'taken' ? styles.statusTagTaken : styles.statusTagPending
+                ]}>
+                  <Text style={[
+                    styles.statusTagText,
+                    med.statusToday === 'taken' ? styles.statusTagTextTaken : styles.statusTagTextPending
+                  ]}>
+                    {med.statusToday === 'taken' ? '✓ Taken' : '⏰ Pending'}
+                  </Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={styles.noMedsCard}>
+              <Text style={styles.noMedsTitle}>No Prescriptions Added</Text>
+              <Text style={styles.noMedsSub}>Tap "Add Medicine" above to schedule pills for this patient.</Text>
+            </View>
+          )}
+        </>
       )}
-
-      {/* Active Patient Card & Actions */}
-      <View style={styles.patientProfileCard}>
-        <View style={styles.profileRow}>
-          <View style={styles.profileAvatar}>
-            <Ionicons name="person" size={28} color="#0D9488" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.profileName}>{currentPatient.name}</Text>
-            <Text style={styles.profileSub}>Age: {currentPatient.age} yrs • Pairing Code: <Text style={{ fontWeight: 'bold', color: '#0D9488' }}>{currentPatient.code}</Text></Text>
-          </View>
-          
-          {/* Quick Direct Call Button */}
-          <TouchableOpacity 
-            style={styles.directCallCircle}
-            onPress={() => callCaretaker(currentPatient.phone)}
-          >
-            <Ionicons name="call" size={20} color="#0D9488" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Adherence Rate Mini-Bar */}
-        <View style={styles.adherenceMiniCard}>
-          <View style={styles.adherenceMiniHeader}>
-            <Text style={styles.adherenceRateText}>{adherenceRate}% Compliance</Text>
-            <Text style={styles.adherenceSubText}>Past 7 Days</Text>
-          </View>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${adherenceRate}%` }]} />
-          </View>
-        </View>
-
-        {/* 3 Main Action Buttons from Flowchart */}
-        <View style={styles.actionGrid}>
-          <TouchableOpacity 
-            style={styles.actionGridBtn}
-            onPress={() => setAddMedModalVisible(true)}
-          >
-            <Ionicons name="add-circle" size={22} color="#0D9488" />
-            <Text style={styles.actionGridText}>Add Medicine</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionGridBtn}
-            onPress={onNavigateReport}
-          >
-            <Ionicons name="document-text" size={22} color="#0D9488" />
-            <Text style={styles.actionGridText}>Weekly Report</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionGridBtn}
-            onPress={() => callCaretaker(currentPatient.phone)}
-          >
-            <Ionicons name="call" size={22} color="#0D9488" />
-            <Text style={styles.actionGridText}>Call Patient</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Prescriptions List */}
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionHeading}>Patient Prescriptions</Text>
-        <Text style={styles.countBadge}>{patientMeds.length} active</Text>
-      </View>
-
-      {patientMeds.map((med) => (
-        <View key={med.id} style={styles.medItemCard}>
-          <View style={[styles.pillColorDot, { backgroundColor: med.color }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.medItemTitle}>{med.name}</Text>
-            <Text style={styles.medItemDetail}>{med.dosage} • {med.time}</Text>
-            <Text style={styles.medItemMeal}>🍽️ {med.mealCondition}</Text>
-          </View>
-          <View style={[
-            styles.statusTag, 
-            med.statusToday === 'taken' ? styles.statusTagTaken : styles.statusTagPending
-          ]}>
-            <Text style={[
-              styles.statusTagText,
-              med.statusToday === 'taken' ? styles.statusTagTextTaken : styles.statusTagTextPending
-            ]}>
-              {med.statusToday === 'taken' ? '✓ Taken' : '⏰ Pending'}
-            </Text>
-          </View>
-        </View>
-      ))}
 
       {/* Modals */}
       <AddMedicationModal visible={addMedModalVisible} onClose={() => setAddMedModalVisible(false)} />
@@ -475,5 +511,83 @@ const styles = StyleSheet.create({
   },
   statusTagTextPending: {
     color: '#92400E',
+  },
+  noPatientCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    marginTop: 10,
+  },
+  noPatientIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  noPatientTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  noPatientSub: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  linkFirstPatientBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#0D9488',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 14,
+    width: '100%',
+    justifyContent: 'center',
+    shadowColor: '#0D9488',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  linkFirstPatientText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  noMedsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginTop: 10,
+  },
+  noMedsTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 4,
+  },
+  noMedsSub: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
   },
 });
