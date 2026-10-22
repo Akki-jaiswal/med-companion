@@ -52,6 +52,95 @@ export const AiHealthAssistantModal = ({ visible, onClose }) => {
     }, 450);
   };
 
+  const renderFormattedText = (text, isAi) => {
+    if (!text) return null;
+
+    const lines = text.split('\n');
+
+    return (
+      <View style={styles.formattedContainer}>
+        {lines.map((rawLine, lineIdx) => {
+          const line = rawLine.trim();
+
+          // Empty line spacing
+          if (!line) {
+            return <View key={lineIdx} style={styles.lineSpacer} />;
+          }
+
+          // Section header detection
+          const isHeader = 
+            line.startsWith('📋') || 
+            line.startsWith('🩺') || 
+            line.startsWith('💡') || 
+            line.startsWith('💊') || 
+            line.startsWith('💧') || 
+            line.startsWith('###') ||
+            /^\*\*\d+\./.test(line);
+
+          const isBullet = line.startsWith('•') || line.startsWith('-') || line.startsWith('* ');
+
+          let content = line;
+          if (isBullet) {
+            content = line.replace(/^[•\-\*]\s*/, '');
+          }
+
+          const parts = content.split(/\*\*(.*?)\*\*/g);
+
+          if (isBullet) {
+            return (
+              <View key={lineIdx} style={styles.bulletRow}>
+                <Text style={isAi ? styles.bulletIconAi : styles.bulletIconUser}>•</Text>
+                <Text style={[styles.bubbleText, isAi ? styles.aiText : styles.userText, { flex: 1 }]}>
+                  {parts.map((part, pIdx) => {
+                    if (pIdx % 2 === 1) {
+                      return (
+                        <Text key={pIdx} style={isAi ? styles.aiBold : styles.userBold}>
+                          {part}
+                        </Text>
+                      );
+                    }
+                    return (
+                      <Text key={pIdx} style={isAi ? styles.aiNormal : styles.userNormal}>
+                        {part}
+                      </Text>
+                    );
+                  })}
+                </Text>
+              </View>
+            );
+          }
+
+          return (
+            <Text
+              key={lineIdx}
+              style={[
+                styles.bubbleText,
+                isAi ? styles.aiText : styles.userText,
+                isHeader && styles.headerLine,
+                lineIdx > 0 && { marginTop: 2 },
+              ]}
+            >
+              {parts.map((part, pIdx) => {
+                if (pIdx % 2 === 1) {
+                  return (
+                    <Text key={pIdx} style={isAi ? (isHeader ? styles.aiHeaderBold : styles.aiBold) : styles.userBold}>
+                      {part}
+                    </Text>
+                  );
+                }
+                return (
+                  <Text key={pIdx} style={isAi ? styles.aiNormal : styles.userNormal}>
+                    {part}
+                  </Text>
+                );
+              })}
+            </Text>
+          );
+        })}
+      </View>
+    );
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
       <KeyboardAvoidingView 
@@ -85,9 +174,7 @@ export const AiHealthAssistantModal = ({ visible, onClose }) => {
                   </View>
                 )}
                 <View style={[styles.bubble, isAi ? styles.aiBubble : styles.userBubble]}>
-                  <Text style={[styles.bubbleText, isAi ? styles.aiText : styles.userText]}>
-                    {m.text}
-                  </Text>
+                  {renderFormattedText(m.text, isAi)}
                   <Text style={[styles.bubbleTime, isAi ? styles.aiTime : styles.userTime]}>
                     {m.time}
                   </Text>
@@ -208,7 +295,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bubble: {
-    maxWidth: '82%',
+    maxWidth: '86%',
     padding: 14,
     borderRadius: 18,
   },
@@ -221,6 +308,53 @@ const styles = StyleSheet.create({
   userBubble: {
     backgroundColor: '#0D9488',
     borderBottomRightRadius: 4,
+  },
+  formattedContainer: {
+    width: '100%',
+  },
+  lineSpacer: {
+    height: 8,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginVertical: 2,
+    gap: 6,
+  },
+  bulletIconAi: {
+    color: '#38BDF8',
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '800',
+  },
+  bulletIconUser: {
+    color: '#CCFBF1',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  aiBold: {
+    fontWeight: '800',
+    color: '#38BDF8',
+  },
+  userBold: {
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  aiHeaderBold: {
+    fontWeight: '900',
+    color: '#F8FAFC',
+    fontSize: 16,
+  },
+  aiNormal: {
+    color: '#F1F5F9',
+    fontWeight: '400',
+  },
+  userNormal: {
+    color: '#FFFFFF',
+    fontWeight: '400',
+  },
+  headerLine: {
+    marginBottom: 4,
   },
   bubbleText: {
     fontSize: 15,
