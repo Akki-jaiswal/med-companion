@@ -99,6 +99,9 @@ export const AppProvider = ({ children }) => {
   // Track fired alarms so each alarm only rings once per scheduled time
   const firedAlarmIdsRef = useRef(new Set());
   const pendingEscalationsRef = useRef({});
+  const processedNotificationIdsRef = useRef(new Set());
+  const markAsTakenRef = useRef(null);
+  const snoozeAlarmRef = useRef(null);
 
   // Check pending alarms when app resumes from background or on clock tick
   const checkPendingAlarms = async () => {
@@ -165,27 +168,41 @@ export const AppProvider = ({ children }) => {
     });
 
     const handleNotificationAction = (response) => {
-      const data = response?.notification?.request?.content?.data;
-      const actionId = response?.actionIdentifier;
+      try {
+        if (!response) return;
 
-      if (actionId === 'SNOOZE_ACTION') {
-        snoozeAlarm();
-        return;
-      }
-
-      if (data?.medIds && Array.isArray(data.medIds) && userRole === 'PATIENT') {
-        if (actionId === 'TAKE_ACTION') {
-          data.medIds.forEach(id => markAsTaken(id));
+        const notifId = response?.notification?.request?.identifier;
+        if (notifId && processedNotificationIdsRef.current.has(notifId)) {
           return;
         }
-        const matched = medications.filter(m => data.medIds.includes(m.id));
-        if (matched.length > 0) {
-          setActiveAlarmMeds(matched);
+        if (notifId) {
+          processedNotificationIdsRef.current.add(notifId);
+        }
+
+        const data = response?.notification?.request?.content?.data;
+        const actionId = response?.actionIdentifier;
+
+        if (actionId === 'SNOOZE_ACTION' && typeof snoozeAlarmRef.current === 'function') {
+          snoozeAlarmRef.current();
+          return;
+        }
+
+        if (data?.medIds && Array.isArray(data.medIds) && userRole === 'PATIENT') {
+          if (actionId === 'TAKE_ACTION' && typeof markAsTakenRef.current === 'function') {
+            data.medIds.forEach(id => markAsTakenRef.current(id));
+            return;
+          }
+          const matched = medications.filter(m => data.medIds.includes(m.id));
+          if (matched.length > 0) {
+            setActiveAlarmMeds(matched);
+          } else {
+            checkPendingAlarms();
+          }
         } else {
           checkPendingAlarms();
         }
-      } else {
-        checkPendingAlarms();
+      } catch (err) {
+        console.log('Safe notification action error caught:', err);
       }
     };
 
@@ -830,6 +847,10 @@ export const AppProvider = ({ children }) => {
     }
     alert('Alarm snoozed! Will automatically ring again in 1 minute.');
   };
+
+  // Keep refs synchronized so early notification listeners can safely invoke without ReferenceErrors
+  markAsTakenRef.current = markAsTaken;
+  snoozeAlarmRef.current = snoozeAlarm;
 
   // Trigger Missed Escalation -> FIRES REAL ANDROID NOTIFICATION TRAY ALERT & DISPATCHES SMS!
   const triggerMissedEscalation = async (medOrMeds) => {

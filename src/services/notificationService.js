@@ -157,7 +157,7 @@ export const registerForPushNotificationsAsync = async () => {
             {
               identifier: 'SNOOZE_ACTION',
               buttonTitle: '⏰ Snooze 5 Min',
-              options: { opensAppToForeground: false },
+              options: { opensAppToForeground: true },
             },
             {
               identifier: 'OPEN_ACTION',
@@ -213,8 +213,6 @@ export const fireInstantMedicationNotification = async (medOrMeds) => {
         priority: 'max',
         channelId: 'medication-alarms',
         categoryIdentifier: 'medication_alarm',
-        sticky: true,
-        autoDismiss: false,
         data: { medIds: medsArray.map(m => m.id), type: 'medication_alarm' },
       },
       trigger: null, // Fires immediately!
@@ -286,8 +284,6 @@ export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
         priority: 'max',
         channelId: 'medication-alarms',
         categoryIdentifier: 'medication_alarm',
-        sticky: true,
-        autoDismiss: false,
         data: { medIds: medsArray.map(m => m.id), type: 'medication_alarm' },
       },
       trigger: {
