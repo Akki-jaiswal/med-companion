@@ -322,6 +322,31 @@ export const AppProvider = ({ children }) => {
     return () => clearInterval(clockInterval);
   }, [medications]);
 
+  // Auto-schedule pending medication alarms and 10-minute pre-alarms whenever medications are loaded
+  useEffect(() => {
+    if (userRole !== 'PATIENT' || !Array.isArray(medications) || medications.length === 0) return;
+
+    const now = Date.now();
+    for (const med of medications) {
+      if (med.statusToday === 'pending' && med.time) {
+        const targetTimestamp = parseTimeToTimestamp(med.time, now);
+        const delay = Math.round((targetTimestamp - now) / 1000);
+
+        if (delay > 0) {
+          scheduleMedicationAlarm(med, delay);
+
+          if (delay > 600) {
+            schedulePreAlarmNotification(med, delay - 600, 10);
+          } else if (delay > 180) {
+            schedulePreAlarmNotification(med, delay - 180, 3);
+          } else if (delay > 40) {
+            schedulePreAlarmNotification(med, Math.round(delay / 2), 1);
+          }
+        }
+      }
+    }
+  }, [medications.length, userRole]);
+
   // Real-Time Cloud Listeners & Patient-Scoped Data Loader (Medications, Escalations & Adherence Reports)
   useEffect(() => {
     // If caretaker has a selected patient, target that patient. Otherwise target current user (patient mode).
@@ -967,11 +992,13 @@ export const AppProvider = ({ children }) => {
     const delay = Math.max(1, Math.round((targetTimestamp - now) / 1000));
     scheduleMedicationAlarm(item, delay);
 
-    // Schedule 10-minute pre-alarm notification in the tray
+    // Schedule automatic 10-minute pre-alarm notification in the tray (adaptive for short test timers)
     if (delay > 600) {
-      schedulePreAlarmNotification(item, delay - 600);
-    } else if (delay > 300) {
-      schedulePreAlarmNotification(item, delay - 300);
+      schedulePreAlarmNotification(item, delay - 600, 10);
+    } else if (delay > 180) {
+      schedulePreAlarmNotification(item, delay - 180, 3);
+    } else if (delay > 40) {
+      schedulePreAlarmNotification(item, Math.round(delay / 2), 1);
     }
 
     // Caretaker background escalation notification
@@ -1015,9 +1042,11 @@ export const AppProvider = ({ children }) => {
     const delay = Math.max(1, Math.round((targetTimestamp - now) / 1000));
     scheduleMedicationAlarm(item, delay);
     if (delay > 600) {
-      schedulePreAlarmNotification(item, delay - 600);
-    } else if (delay > 300) {
-      schedulePreAlarmNotification(item, delay - 300);
+      schedulePreAlarmNotification(item, delay - 600, 10);
+    } else if (delay > 180) {
+      schedulePreAlarmNotification(item, delay - 180, 3);
+    } else if (delay > 40) {
+      schedulePreAlarmNotification(item, Math.round(delay / 2), 1);
     }
   };
 

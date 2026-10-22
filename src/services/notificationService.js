@@ -224,8 +224,8 @@ export const fireInstantMedicationNotification = async (medOrMeds) => {
   }
 };
 
-// Schedule 5-10 Minute Pre-Alarm in Notification Tray
-export const schedulePreAlarmNotification = async (medOrMeds, delaySeconds = 300) => {
+// Schedule 10-Minute (or adaptive) Pre-Alarm in Notification Tray
+export const schedulePreAlarmNotification = async (medOrMeds, delaySeconds = 300, minutesPrior = 10) => {
   try {
     if (!scheduleNotificationAsync || delaySeconds <= 0) return null;
     const medsArray = Array.isArray(medOrMeds) ? medOrMeds : [medOrMeds];
@@ -234,10 +234,11 @@ export const schedulePreAlarmNotification = async (medOrMeds, delaySeconds = 300
     const names = medsArray.map(m => m.name).join(', ');
     const first = medsArray[0];
     const safeSeconds = Math.max(1, Math.round(delaySeconds));
+    const label = minutesPrior <= 1 ? '1 min' : `${minutesPrior} mins`;
 
     const id = await scheduleNotificationAsync({
       content: {
-        title: `⏰ Upcoming in 10 mins: ${names}`,
+        title: `⏰ Upcoming in ${label}: ${names}`,
         body: `Scheduled for ${first.time} (${first.mealCondition || 'As prescribed'}). Keep your water ready!`,
         sound: 'default',
         priority: 'high',
