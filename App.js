@@ -11,6 +11,7 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { AiHealthAssistantModal } from './src/screens/AiHealthAssistantModal';
 import { AlarmModal } from './src/screens/AlarmModal';
+import { CaretakerEmergencyAlarmModal } from './src/screens/CaretakerEmergencyAlarmModal';
 import { BottomNavBar } from './src/components/BottomNavBar';
 
 const MainNavigator = () => {
@@ -122,6 +123,9 @@ const MainNavigator = () => {
 
       {/* Full-Screen Alarm Modal (Pulsing sound, voice TTS & countdown) */}
       <AlarmModal />
+
+      {/* Full-Screen Caretaker Emergency Alarm Modal (Red Siren, Voice TTS & Direct Call for Caretakers) */}
+      <CaretakerEmergencyAlarmModal />
 
       {/* Meta AI-style Health Chatbot Modal */}
       <AiHealthAssistantModal

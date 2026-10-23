@@ -62,3 +62,36 @@ export const stopSpeech = () => {
     Speech.stop();
   } catch (e) {}
 };
+
+export const speakCaretakerEmergency = (patientName = 'Your patient', pillName = 'medication', scheduledTime = '', shouldLoop = true) => {
+  stopSpeech();
+  isSpeakingActive = true;
+
+  const timeText = scheduledTime ? `scheduled for ${scheduledTime}` : '';
+  const message = `Emergency Alert for Caretaker. ${patientName} has missed their dose of ${pillName} ${timeText}. Please call them immediately.`;
+
+  const speakNow = () => {
+    if (!isSpeakingActive) return;
+    Speech.speak(message, {
+      language: 'en-US',
+      pitch: 1.05,
+      rate: 0.9,
+      onDone: () => {
+        if (shouldLoop && isSpeakingActive) {
+          speechLoopTimeout = setTimeout(() => {
+            speakNow();
+          }, 2500);
+        }
+      },
+      onError: () => {
+        if (shouldLoop && isSpeakingActive) {
+          speechLoopTimeout = setTimeout(() => {
+            speakNow();
+          }, 3000);
+        }
+      }
+    });
+  };
+
+  speakNow();
+};
