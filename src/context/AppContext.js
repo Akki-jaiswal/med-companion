@@ -182,6 +182,17 @@ export const AppProvider = ({ children }) => {
         const data = response?.notification?.request?.content?.data;
         const actionId = response?.actionIdentifier;
 
+        if (data?.type === 'caretaker_escalation') {
+          setEscalationAlert({
+            patientName: data.patientName || 'Patient',
+            pillName: data.pillName || 'Medication',
+            scheduledTime: data.scheduledTime || '',
+            phone: data.patientPhone || '',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+          return;
+        }
+
         if (actionId === 'SNOOZE_ACTION' && typeof snoozeAlarmRef.current === 'function') {
           snoozeAlarmRef.current();
           return;
@@ -934,7 +945,8 @@ export const AppProvider = ({ children }) => {
     await triggerCaretakerPushAlert(
       alertPayload.patientName,
       alertPayload.pillName,
-      alertPayload.scheduledTime
+      alertPayload.scheduledTime,
+      alertPayload.phone
     );
 
     // 3. Dispatch SMS alert to registered emergency caretaker phone
@@ -1332,6 +1344,7 @@ export const AppProvider = ({ children }) => {
         triggerMissedEscalation,
         escalationAlert,
         setEscalationAlert,
+        resolveCloudEscalation,
         adherenceHistory,
         caretakerPhone,
         setCaretakerPhone,
