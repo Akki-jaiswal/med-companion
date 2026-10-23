@@ -181,6 +181,24 @@ export const registerForPushNotificationsAsync = async () => {
         lockscreenVisibility: visPublic,
         lightColor: '#0D9488',
       });
+
+      // 3. Caretaker Emergency Missed-Dose Alerts Channel (Max priority + Alarm Audio Stream + Loud siren vibration)
+      await setNotificationChannelAsync('caretaker-emergency-alerts', {
+        name: '🚨 Caretaker Emergency Missed-Dose Alerts',
+        importance: maxImp,
+        vibrationPattern: [0, 1000, 300, 1000, 300, 1000, 300, 1500],
+        sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
+        bypassDnd: true,
+        lockscreenVisibility: visPublic,
+        audioAttributes: {
+          usage: 4, // Android AudioAttributes.USAGE_ALARM
+          contentType: 4, // Android AudioAttributes.CONTENT_TYPE_SONIFICATION
+          flags: { enforceAudibility: true }
+        },
+        lightColor: '#EF4444',
+      });
     }
 
     return true;
@@ -394,19 +412,19 @@ export const cancelScheduledNotification = async (notificationId) => {
 };
 
 // Trigger REAL Android System Notification in the phone's top tray for Caretaker!
-export const triggerCaretakerPushAlert = async (patientName, pillName, scheduledTime) => {
+export const triggerCaretakerPushAlert = async (patientName, pillName, scheduledTime, patientPhone = '') => {
   try {
     if (!scheduleNotificationAsync) return false;
 
-    // Fire directly into the Android Status Bar tray
+    // Fire directly into the Android Status Bar tray on emergency channel
     await scheduleNotificationAsync({
       content: {
-        title: `🚨 CARETAKER ALERT: ${patientName}`,
-        body: `${patientName} missed ${pillName} scheduled at ${scheduledTime}. Tap to call immediately!`,
+        title: `🚨 CARETAKER EMERGENCY: ${patientName}`,
+        body: `${patientName} missed ${pillName} scheduled at ${scheduledTime}. Tap to open emergency alarm & call!`,
         sound: 'default',
         priority: 'max',
-        channelId: 'medication-alarms',
-        data: { type: 'caretaker_escalation', patientName, pillName },
+        channelId: 'caretaker-emergency-alerts',
+        data: { type: 'caretaker_escalation', patientName, pillName, scheduledTime, patientPhone },
       },
       trigger: null, // Immediate!
     });
