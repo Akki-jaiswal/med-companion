@@ -71,6 +71,16 @@ export const AppProvider = ({ children }) => {
 
   const [activeAlarmMeds, setActiveAlarmMeds] = useState([]);
   const activeAlarmMed = activeAlarmMeds.length > 0 ? activeAlarmMeds[0] : null;
+
+  // Setter supporting backward-compatible single med calls and clearing
+  const setActiveAlarmMed = (med) => {
+    if (!med) {
+      setActiveAlarmMeds([]);
+    } else {
+      setActiveAlarmMeds(Array.isArray(med) ? med : [med]);
+    }
+  };
+
   const [escalationAlert, setEscalationAlert] = useState(null);
 
   // Track fired alarms so each alarm only rings once per scheduled time
