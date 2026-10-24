@@ -8,12 +8,12 @@ MedCompanion is a smart mobile application designed to bridge the gap between el
 ## 🌟 Key Features
 
 1. **Dual Operating Modes**:
-   - **Patient Mode**: High-contrast, large-font interface designed specifically for elderly individuals. Displays today's schedule, pill color/shape tags, and dietary conditions (*"After Lunch"*).
+   - **Patient Mode**: High-contrast, large-font interface designed specifically for elderly individuals. Displays today's schedule, dynamic vertical alarm wheel drum, pill color/shape tags, and dietary conditions (*"After Lunch"*).
    - **Caretaker Mode**: Centralized dashboard to monitor multiple patients, remotely assign medications, track weekly compliance, and initiate instant phone calls.
 
 2. **Automated Escalation System**:
-   - When a medication time arrives, a **Full-Screen Alarm** triggers on the patient's phone with vibration and pulsing alerts.
-   - If the patient does not acknowledge ("Taken") or snooze within the threshold, an **Escalation Notification** alerts the Caretaker: *"Dad has not taken his 08:00 AM Blood Pressure pill!"*
+   - When a medication time arrives, a **Full-Screen Alarm** triggers on the patient's phone with speech voice synthesis and pulsing alerts.
+   - If the patient does not acknowledge ("Taken") or snooze within the threshold, an **Escalation Notification** alerts the Caretaker: *"Akki did not take Disprin scheduled at 07:56 PM. Action required!"*
 
 3. **Emergency SOS (1-Tap Native Dial)**:
    - Giant red SOS button that immediately triggers the phone's native dialer to connect to the family caretaker. Zero external paid API costs.
@@ -21,8 +21,11 @@ MedCompanion is a smart mobile application designed to bridge the gap between el
 4. **Doctor-Ready Downloadable PDF Report**:
    - Generates an official 7-day adherence report with compliance percentages, missed/taken breakdowns, and prescription logs. Can be shared directly to WhatsApp or saved to files.
 
-5. **Local-First & Cloud Ready**:
-   - Prescriptions and adherence logs persist locally via `AsyncStorage` and are structured for Firebase Firestore real-time synchronization.
+5. **Local-First & Cloud Firestore Real-Time Backend**:
+   - Prescriptions and adherence logs persist locally via `AsyncStorage` and sync bidirectionally via Google Cloud Firestore with strict multi-account isolation.
+
+6. **Hardened Notification Pipeline (Expo Go SDK 53 Compatible)**:
+   - Built with dedicated submodule decoupling to prevent native push topic crashes while providing rock-solid local notifications, alarm channels, and background triggers.
 
 ---
 
