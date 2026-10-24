@@ -348,11 +348,6 @@ export const AppProvider = ({ children }) => {
     }
 
     // 1. Permanently store in Registered Users Map
-    let usersMap = {};
-    try {
-      const existingMapStr = await AsyncStorage.getItem('@registered_users_map');
-      if (existingMapStr) usersMap = JSON.parse(existingMapStr);
-    } catch (e) {}
     usersMap[emailKey] = newUser;
     await AsyncStorage.setItem('@registered_users_map', JSON.stringify(usersMap));
 
@@ -839,7 +834,6 @@ export const AppProvider = ({ children }) => {
     }
     firedAlarmIdsRef.current.delete(medId);
     setActiveAlarmMeds(prev => prev.filter(m => m.id !== medId));
-    }
 
     const targetMed = medications.find(m => m.id === medId);
     const updated = medications.filter(m => m.id !== medId);
