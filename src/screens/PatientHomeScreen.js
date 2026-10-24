@@ -90,8 +90,8 @@ export const PatientHomeScreen = ({ onNavigateMedicines }) => {
   };
 
   const handleTestAlarmNotification = async () => {
-    const scheduled = await scheduleTestAlarmNotification(5);
-    if (scheduled) {
+    const res = await scheduleTestAlarmNotification(5);
+    if (res?.success) {
       Alert.alert(
         '🔔 Alarm Test Scheduled (5s)',
         'MedCompanion scheduled a test alarm notification in 5 seconds.\n\n👉 Minimize the app or lock your screen now. It will appear at the top in your Android notification shade!',
@@ -100,7 +100,7 @@ export const PatientHomeScreen = ({ onNavigateMedicines }) => {
     } else {
       Alert.alert(
         'Notification Notice',
-        'Could not trigger system notification. Please ensure notification permissions are allowed for Expo Go in Android Settings.'
+        `Could not trigger system notification: ${res?.error || 'Unknown error'}. Please verify notification permissions.`
       );
     }
   };

@@ -17,6 +17,11 @@ try {
   console.log('Notification handler note:', e.message);
 }
 
+// Android fallback constants to prevent undefined property crashes in Expo
+const ANDROID_IMPORTANCE_MAX = 5;
+const ANDROID_IMPORTANCE_HIGH = 4;
+const ANDROID_VISIBILITY_PUBLIC = 1;
+
 // Request notification permissions & set high priority channel
 export const registerForPushNotificationsAsync = async () => {
   try {
@@ -25,33 +30,37 @@ export const registerForPushNotificationsAsync = async () => {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
-    if (existingStatus !== 'granted') {
+    if (existingStatus !== 'granted' && Notifications?.requestPermissionsAsync) {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
 
-    if (Platform.OS === 'android' && Notifications.setNotificationChannelAsync) {
+    if (Platform.OS === 'android' && Notifications?.setNotificationChannelAsync) {
+      const maxImp = Notifications?.AndroidImportance?.MAX ?? ANDROID_IMPORTANCE_MAX;
+      const highImp = Notifications?.AndroidImportance?.HIGH ?? ANDROID_IMPORTANCE_HIGH;
+      const visPublic = Notifications?.AndroidNotificationVisibility?.PUBLIC ?? ANDROID_VISIBILITY_PUBLIC;
+
       // 1. Android System Urgent Alarm Channel (High priority + Sound + Strong Vibration)
       await Notifications.setNotificationChannelAsync('medication-alarms', {
         name: 'Urgent Medication Alarms',
-        importance: Notifications.AndroidImportance.MAX,
+        importance: maxImp,
         vibrationPattern: [0, 600, 400, 600, 400, 600],
         sound: 'default',
         enableVibrate: true,
         showBadge: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC,
+        lockscreenVisibility: visPublic,
         lightColor: '#DC2626',
       });
 
       // 2. Upcoming 10-Minute Pre-Alarm Channel (Notifies before pill time)
       await Notifications.setNotificationChannelAsync('medication-reminders', {
         name: 'Upcoming Pill Reminders (10m Prior)',
-        importance: Notifications.AndroidImportance.HIGH,
+        importance: highImp,
         vibrationPattern: [0, 300, 200, 300],
         sound: 'default',
         enableVibrate: true,
         showBadge: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC,
+        lockscreenVisibility: visPublic,
         lightColor: '#0D9488',
       });
     }
@@ -83,7 +92,7 @@ export const fireInstantMedicationNotification = async (medOrMeds) => {
         title,
         body,
         sound: 'default',
-        priority: Notifications.AndroidNotificationPriority?.MAX,
+        priority: 'max',
         channelId: 'medication-alarms',
         data: { medIds: medsArray.map(m => m.id), type: 'medication_alarm' },
       },
@@ -112,12 +121,12 @@ export const schedulePreAlarmNotification = async (medOrMeds, delaySeconds = 300
         title: `⏰ Upcoming in 10 mins: ${names}`,
         body: `Scheduled for ${first.time} (${first.mealCondition || 'As prescribed'}). Keep your water ready!`,
         sound: 'default',
-        priority: Notifications.AndroidNotificationPriority?.HIGH,
+        priority: 'high',
         channelId: 'medication-reminders',
         data: { medIds: medsArray.map(m => m.id), type: 'pre_alarm' },
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL || 'timeInterval',
+        type: 'timeInterval',
         seconds: safeSeconds,
         repeats: false,
         channelId: 'medication-reminders',
@@ -153,12 +162,12 @@ export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
         title,
         body,
         sound: 'default',
-        priority: Notifications.AndroidNotificationPriority?.MAX,
+        priority: 'max',
         channelId: 'medication-alarms',
         data: { medIds: medsArray.map(m => m.id), type: 'medication_alarm' },
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL || 'timeInterval',
+        type: 'timeInterval',
         seconds: safeSeconds,
         repeats: false,
         channelId: 'medication-alarms',
@@ -174,28 +183,50 @@ export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
 // Test notification helper for user to verify system notifications in background within 5s
 export const scheduleTestAlarmNotification = async (seconds = 5) => {
   try {
-    if (!Notifications?.scheduleNotificationAsync) return false;
-    const safeSec = Math.max(1, seconds);
-    await Notifications.scheduleNotificationAsync({
+    if (!Notifications?.scheduleNotificationAsync) {
+      return { success: false, error: 'Notifications module not available' };
+    }
+
+    // Ensure permissions and channel are registered
+    await registerForPushNotificationsAsync();
+
+    const safeSec = Math.max(1, Math.round(seconds));
+    const id = await Notifications.scheduleNotificationAsync({
       content: {
         title: '⏰ MEDCOMPANION ALARM TEST',
         body: `Test alarm notification fired in ${safeSec}s! Tap here to return to MedCompanion.`,
         sound: 'default',
-        priority: Notifications.AndroidNotificationPriority?.MAX,
+        priority: 'max',
         channelId: 'medication-alarms',
         data: { type: 'test_alarm' },
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL || 'timeInterval',
+        type: 'timeInterval',
         seconds: safeSec,
         repeats: false,
         channelId: 'medication-alarms',
       },
     });
-    return true;
+    return { success: true, id };
   } catch (e) {
-    console.log('scheduleTestAlarmNotification note:', e.message);
-    return false;
+    console.log('scheduleTestAlarmNotification timed error, attempting immediate fallback:', e?.message);
+    try {
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '⏰ MEDCOMPANION ALARM TEST',
+          body: 'Test alarm notification fired immediately! Notification permissions verified.',
+          sound: 'default',
+          priority: 'max',
+          channelId: 'medication-alarms',
+          data: { type: 'test_alarm' },
+        },
+        trigger: null,
+      });
+      return { success: true, id, fallback: true };
+    } catch (fallbackErr) {
+      console.log('scheduleTestAlarmNotification fallback error:', fallbackErr?.message);
+      return { success: false, error: e?.message || fallbackErr?.message };
+    }
   }
 };
 

@@ -86,6 +86,33 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
     }
   };
 
+  const handleRealtimeScroll = (e, type) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const idx = Math.max(0, Math.round(y / ITEM_HEIGHT));
+    if (type === 'hour') {
+      const safeIdx = Math.min(hoursList.length - 1, idx);
+      const h = hoursList[safeIdx];
+      if (h && h !== selectedHour) {
+        setSelectedHour(h);
+        setTime(`${h}:${selectedMinute} ${selectedPeriod}`);
+      }
+    } else if (type === 'minute') {
+      const safeIdx = Math.min(minutesList.length - 1, idx);
+      const m = minutesList[safeIdx];
+      if (m && m !== selectedMinute) {
+        setSelectedMinute(m);
+        setTime(`${selectedHour}:${m} ${selectedPeriod}`);
+      }
+    } else if (type === 'period') {
+      const safeIdx = Math.min(periodsList.length - 1, idx);
+      const p = periodsList[safeIdx]?.toUpperCase();
+      if (p && p !== selectedPeriod) {
+        setSelectedPeriod(p);
+        setTime(`${selectedHour}:${selectedMinute} ${p}`);
+      }
+    }
+  };
+
   const handleScrollEnd = (e, type) => {
     const y = e.nativeEvent.contentOffset.y;
     if (type === 'hour') {
@@ -243,7 +270,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody} nestedScrollEnabled={true}>
             {/* Form Fields */}
             <Text style={styles.label}>Medicine Name *</Text>
             <TextInput
@@ -351,6 +378,9 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
                   <ScrollView
                     ref={hourScrollRef}
                     showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled={true}
+                    scrollEventThrottle={16}
+                    onScroll={(e) => handleRealtimeScroll(e, 'hour')}
                     snapToInterval={ITEM_HEIGHT}
                     snapToAlignment="center"
                     decelerationRate="fast"
@@ -384,6 +414,9 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
                   <ScrollView
                     ref={minuteScrollRef}
                     showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled={true}
+                    scrollEventThrottle={16}
+                    onScroll={(e) => handleRealtimeScroll(e, 'minute')}
                     snapToInterval={ITEM_HEIGHT}
                     snapToAlignment="center"
                     decelerationRate="fast"
@@ -414,6 +447,9 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
                   <ScrollView
                     ref={periodScrollRef}
                     showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled={true}
+                    scrollEventThrottle={16}
+                    onScroll={(e) => handleRealtimeScroll(e, 'period')}
                     snapToInterval={ITEM_HEIGHT}
                     snapToAlignment="center"
                     decelerationRate="fast"
@@ -447,7 +483,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
                   onPress={setTestIn1Min}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="flash" size={14} color="#0D9488" />
+                  <Ionicons name="flash" size={13} color="#64748B" />
                   <Text style={styles.testQuickBtnText}>Test in 1 Min</Text>
                 </TouchableOpacity>
 
@@ -764,8 +800,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   colorCircleSelected: {
-    borderWidth: 3,
-    borderColor: '#0F172A',
+    transform: [{ scale: 1.15 }],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 3,
   },
   saveBtn: {
     flexDirection: 'row',
@@ -879,16 +919,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#F0FDFA',
-    borderWidth: 1,
-    borderColor: '#0D9488',
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 8,
   },
   testQuickBtnText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#0D9488',
+    fontWeight: '600',
+    color: '#475569',
   },
 });
