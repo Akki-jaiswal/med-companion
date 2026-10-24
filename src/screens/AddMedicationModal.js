@@ -5,8 +5,8 @@ import { useApp } from '../context/AppContext';
 
 const ITEM_HEIGHT = 48;
 
-export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }) => {
-  const { addMedication, updateMedication } = useApp();
+export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, patientId = null }) => {
+  const { addMedication, updateMedication, selectedPatientId, currentUser } = useApp();
 
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
@@ -235,6 +235,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
       weeklyDay: frequency === 'Weekly' ? weeklyDay : null,
       color,
       shape,
+      patientId: patientId || medicationToEdit?.patientId || (currentUser?.roles?.includes('CARETAKER') ? selectedPatientId : (currentUser?.id || 'self')),
     };
 
     if (medicationToEdit) {
