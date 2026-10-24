@@ -1,20 +1,75 @@
 import { Platform } from 'react-native';
+
+// Robust loader for expo-notifications with direct submodule fallbacks for Expo Go SDK 53
 let Notifications = null;
+let scheduleNotificationAsync = null;
+let setNotificationHandler = null;
+let setNotificationChannelAsync = null;
+let getPermissionsAsync = null;
+let requestPermissionsAsync = null;
+let cancelScheduledNotificationAsync = null;
 
 try {
   Notifications = require('expo-notifications');
-  if (Notifications?.setNotificationHandler) {
-    // Show alert, play sound, vibrate even if app is open or closed!
-    Notifications.setNotificationHandler({
+  if (Notifications) {
+    scheduleNotificationAsync = Notifications.scheduleNotificationAsync;
+    setNotificationHandler = Notifications.setNotificationHandler;
+    setNotificationChannelAsync = Notifications.setNotificationChannelAsync;
+    getPermissionsAsync = Notifications.getPermissionsAsync;
+    requestPermissionsAsync = Notifications.requestPermissionsAsync;
+    cancelScheduledNotificationAsync = Notifications.cancelScheduledNotificationAsync;
+  }
+} catch (e) {
+  console.log('Top-level expo-notifications note:', e.message);
+}
+
+// Submodule fallbacks: in Expo Go SDK 53 on Android, top-level index may fail due to push topic module removal,
+// but local notification modules are 100% available via direct build submodules!
+if (!scheduleNotificationAsync) {
+  try {
+    const m = require('expo-notifications/build/scheduleNotificationAsync');
+    scheduleNotificationAsync = m.scheduleNotificationAsync;
+  } catch (e) {}
+}
+if (!setNotificationHandler) {
+  try {
+    const m = require('expo-notifications/build/NotificationsHandler');
+    setNotificationHandler = m.setNotificationHandler;
+  } catch (e) {}
+}
+if (!setNotificationChannelAsync) {
+  try {
+    const m = require('expo-notifications/build/setNotificationChannelAsync');
+    setNotificationChannelAsync = m.setNotificationChannelAsync;
+  } catch (e) {}
+}
+if (!getPermissionsAsync || !requestPermissionsAsync) {
+  try {
+    const m = require('expo-notifications/build/NotificationPermissions');
+    getPermissionsAsync = m.getPermissionsAsync;
+    requestPermissionsAsync = m.requestPermissionsAsync;
+  } catch (e) {}
+}
+if (!cancelScheduledNotificationAsync) {
+  try {
+    const m = require('expo-notifications/build/cancelScheduledNotificationAsync');
+    cancelScheduledNotificationAsync = m.cancelScheduledNotificationAsync;
+  } catch (e) {}
+}
+
+// Configure notification handler so foreground notifications pop up and chime
+if (setNotificationHandler) {
+  try {
+    setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
       }),
     });
+  } catch (e) {
+    console.log('setNotificationHandler note:', e.message);
   }
-} catch (e) {
-  console.log('Notification handler note:', e.message);
 }
 
 // Android fallback constants to prevent undefined property crashes in Expo
@@ -25,23 +80,23 @@ const ANDROID_VISIBILITY_PUBLIC = 1;
 // Request notification permissions & set high priority channel
 export const registerForPushNotificationsAsync = async () => {
   try {
-    if (!Notifications?.getPermissionsAsync) return false;
+    if (!getPermissionsAsync) return false;
 
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    const { status: existingStatus } = await getPermissionsAsync();
     let finalStatus = existingStatus;
 
-    if (existingStatus !== 'granted' && Notifications?.requestPermissionsAsync) {
-      const { status } = await Notifications.requestPermissionsAsync();
+    if (existingStatus !== 'granted' && requestPermissionsAsync) {
+      const { status } = await requestPermissionsAsync();
       finalStatus = status;
     }
 
-    if (Platform.OS === 'android' && Notifications?.setNotificationChannelAsync) {
+    if (Platform.OS === 'android' && setNotificationChannelAsync) {
       const maxImp = Notifications?.AndroidImportance?.MAX ?? ANDROID_IMPORTANCE_MAX;
       const highImp = Notifications?.AndroidImportance?.HIGH ?? ANDROID_IMPORTANCE_HIGH;
       const visPublic = Notifications?.AndroidNotificationVisibility?.PUBLIC ?? ANDROID_VISIBILITY_PUBLIC;
 
       // 1. Android System Urgent Alarm Channel (High priority + Sound + Strong Vibration)
-      await Notifications.setNotificationChannelAsync('medication-alarms', {
+      await setNotificationChannelAsync('medication-alarms', {
         name: 'Urgent Medication Alarms',
         importance: maxImp,
         vibrationPattern: [0, 600, 400, 600, 400, 600],
@@ -53,7 +108,7 @@ export const registerForPushNotificationsAsync = async () => {
       });
 
       // 2. Upcoming 10-Minute Pre-Alarm Channel (Notifies before pill time)
-      await Notifications.setNotificationChannelAsync('medication-reminders', {
+      await setNotificationChannelAsync('medication-reminders', {
         name: 'Upcoming Pill Reminders (10m Prior)',
         importance: highImp,
         vibrationPattern: [0, 300, 200, 300],
@@ -75,7 +130,7 @@ export const registerForPushNotificationsAsync = async () => {
 // Fire an immediate heads-up alarm notification on the device (Supports single or multiple pills)
 export const fireInstantMedicationNotification = async (medOrMeds) => {
   try {
-    if (!Notifications?.scheduleNotificationAsync) return null;
+    if (!scheduleNotificationAsync) return null;
     const medsArray = Array.isArray(medOrMeds) ? medOrMeds : [medOrMeds];
     if (medsArray.length === 0) return null;
 
@@ -87,7 +142,7 @@ export const fireInstantMedicationNotification = async (medOrMeds) => {
       ? `Dosage: ${medsArray[0].dosage} (${medsArray[0].mealCondition || 'As prescribed'}). Please take it now!`
       : `Prescriptions: ` + medsArray.map(m => `${m.name} (${m.dosage} • ${m.mealCondition || 'As prescribed'})`).join(', ') + `. Please take with water!`;
 
-    const id = await Notifications.scheduleNotificationAsync({
+    const id = await scheduleNotificationAsync({
       content: {
         title,
         body,
@@ -108,7 +163,7 @@ export const fireInstantMedicationNotification = async (medOrMeds) => {
 // Schedule 5-10 Minute Pre-Alarm in Notification Tray
 export const schedulePreAlarmNotification = async (medOrMeds, delaySeconds = 300) => {
   try {
-    if (!Notifications?.scheduleNotificationAsync || delaySeconds <= 0) return null;
+    if (!scheduleNotificationAsync || delaySeconds <= 0) return null;
     const medsArray = Array.isArray(medOrMeds) ? medOrMeds : [medOrMeds];
     if (medsArray.length === 0) return null;
 
@@ -116,7 +171,7 @@ export const schedulePreAlarmNotification = async (medOrMeds, delaySeconds = 300
     const first = medsArray[0];
     const safeSeconds = Math.max(1, Math.round(delaySeconds));
 
-    const id = await Notifications.scheduleNotificationAsync({
+    const id = await scheduleNotificationAsync({
       content: {
         title: `⏰ Upcoming in 10 mins: ${names}`,
         body: `Scheduled for ${first.time} (${first.mealCondition || 'As prescribed'}). Keep your water ready!`,
@@ -142,7 +197,7 @@ export const schedulePreAlarmNotification = async (medOrMeds, delaySeconds = 300
 // Schedule background alarm for future seconds (Supports single or multiple pills)
 export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
   try {
-    if (!Notifications?.scheduleNotificationAsync) return null;
+    if (!scheduleNotificationAsync) return null;
     const medsArray = Array.isArray(medOrMeds) ? medOrMeds : [medOrMeds];
     if (medsArray.length === 0) return null;
 
@@ -157,7 +212,7 @@ export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
       ? `Dosage: ${first.dosage} (${first.mealCondition || 'As prescribed'}). Please take it now!`
       : `Prescriptions: ` + medsArray.map(m => `${m.name} (${m.dosage} • ${m.mealCondition || 'As prescribed'})`).join(', ') + `. Please take with water!`;
 
-    const id = await Notifications.scheduleNotificationAsync({
+    const id = await scheduleNotificationAsync({
       content: {
         title,
         body,
@@ -183,7 +238,7 @@ export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
 // Test notification helper for user to verify system notifications in background within 5s
 export const scheduleTestAlarmNotification = async (seconds = 5) => {
   try {
-    if (!Notifications?.scheduleNotificationAsync) {
+    if (!scheduleNotificationAsync) {
       return { success: false, error: 'Notifications module not available' };
     }
 
@@ -191,7 +246,7 @@ export const scheduleTestAlarmNotification = async (seconds = 5) => {
     await registerForPushNotificationsAsync();
 
     const safeSec = Math.max(1, Math.round(seconds));
-    const id = await Notifications.scheduleNotificationAsync({
+    const id = await scheduleNotificationAsync({
       content: {
         title: '⏰ MEDCOMPANION ALARM TEST',
         body: `Test alarm notification fired in ${safeSec}s! Tap here to return to MedCompanion.`,
@@ -211,7 +266,10 @@ export const scheduleTestAlarmNotification = async (seconds = 5) => {
   } catch (e) {
     console.log('scheduleTestAlarmNotification timed error, attempting immediate fallback:', e?.message);
     try {
-      const id = await Notifications.scheduleNotificationAsync({
+      if (!scheduleNotificationAsync) {
+        return { success: false, error: 'Notifications scheduler unavailable' };
+      }
+      const id = await scheduleNotificationAsync({
         content: {
           title: '⏰ MEDCOMPANION ALARM TEST',
           body: 'Test alarm notification fired immediately! Notification permissions verified.',
@@ -233,20 +291,23 @@ export const scheduleTestAlarmNotification = async (seconds = 5) => {
 // Schedule Caretaker Escalation Alert to fire automatically at delaySeconds if not cancelled
 export const scheduleCaretakerEscalationNotification = async (patientName, pillName, scheduledTime, delaySeconds = 60) => {
   try {
-    if (!Notifications?.scheduleNotificationAsync) return null;
+    if (!scheduleNotificationAsync) return null;
 
     const safeSeconds = Math.max(1, Math.round(delaySeconds));
-    const id = await Notifications.scheduleNotificationAsync({
+    const id = await scheduleNotificationAsync({
       content: {
         title: `🚨 CARETAKER ALERT: ${patientName} Missed Pill!`,
         body: `${patientName} did not acknowledge ${pillName} scheduled at ${scheduledTime}. Action required!`,
         sound: 'default',
-        priority: Notifications.AndroidNotificationPriority?.MAX,
+        priority: 'max',
         channelId: 'medication-alarms',
         data: { type: 'escalation_alert', pillName },
       },
       trigger: {
+        type: 'timeInterval',
         seconds: safeSeconds,
+        repeats: false,
+        channelId: 'medication-alarms',
       },
     });
     return id;
@@ -259,8 +320,8 @@ export const scheduleCaretakerEscalationNotification = async (patientName, pillN
 // Cancel a scheduled notification (e.g. when patient marks pill as Taken)
 export const cancelScheduledNotification = async (notificationId) => {
   try {
-    if (!notificationId || !Notifications?.cancelScheduledNotificationAsync) return;
-    await Notifications.cancelScheduledNotificationAsync(notificationId);
+    if (!notificationId || !cancelScheduledNotificationAsync) return;
+    await cancelScheduledNotificationAsync(notificationId);
   } catch (e) {
     console.log('cancelScheduledNotification note:', e.message);
   }
@@ -269,44 +330,23 @@ export const cancelScheduledNotification = async (notificationId) => {
 // Trigger REAL Android System Notification in the phone's top tray for Caretaker!
 export const triggerCaretakerPushAlert = async (patientName, pillName, scheduledTime) => {
   try {
-    if (!Notifications?.scheduleNotificationAsync) return;
+    if (!scheduleNotificationAsync) return false;
 
-    await Notifications.scheduleNotificationAsync({
+    // Fire directly into the Android Status Bar tray
+    await scheduleNotificationAsync({
       content: {
-        title: `🚨 CARETAKER ALERT: ${patientName} Missed Pill!`,
-        body: `${patientName} did not acknowledge ${pillName} scheduled at ${scheduledTime}. Action required!`,
+        title: `🚨 CARETAKER ALERT: ${patientName}`,
+        body: `${patientName} missed ${pillName} scheduled at ${scheduledTime}. Tap to call immediately!`,
         sound: 'default',
-        priority: Notifications.AndroidNotificationPriority?.MAX,
+        priority: 'max',
         channelId: 'medication-alarms',
-        data: { type: 'escalation_alert' },
+        data: { type: 'caretaker_escalation', patientName, pillName },
       },
-      trigger: null, // Pops up immediately in device notification bar!
+      trigger: null, // Immediate!
     });
-  } catch (error) {
-    console.log('triggerCaretakerPushAlert note:', error.message);
-  }
-};
-
-// Listener for when patient taps on the system notification in the notification bar
-export const addNotificationResponseListener = (callback) => {
-  try {
-    if (Notifications?.addNotificationResponseReceivedListener) {
-      return Notifications.addNotificationResponseReceivedListener(callback);
-    }
+    return true;
   } catch (e) {
-    console.log('addNotificationResponseListener note:', e.message);
+    console.log('triggerCaretakerPushAlert note:', e.message);
+    return false;
   }
-  return { remove: () => {} };
-};
-
-// Listener for when a notification is received in foreground/background
-export const addNotificationReceivedListener = (callback) => {
-  try {
-    if (Notifications?.addNotificationReceivedListener) {
-      return Notifications.addNotificationReceivedListener(callback);
-    }
-  } catch (e) {
-    console.log('addNotificationReceivedListener note:', e.message);
-  }
-  return { remove: () => {} };
 };
