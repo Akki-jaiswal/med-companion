@@ -75,8 +75,8 @@ export const fireInstantMedicationNotification = async (medOrMeds) => {
       ? `⏰ TIME FOR MEDICATION: ${medsArray[0].name}`
       : `⏰ TIME FOR MEDICATIONS (${medsArray.length} Pills)`;
     const body = medsArray.length === 1
-      ? `Dosage: ${medsArray[0].dosage} (${medsArray[0].mealCondition}). Please take it now!`
-      : `Prescriptions: ${names}. Take with water (${medsArray[0].mealCondition})!`;
+      ? `Dosage: ${medsArray[0].dosage} (${medsArray[0].mealCondition || 'As prescribed'}). Please take it now!`
+      : `Prescriptions: ` + medsArray.map(m => `${m.name} (${m.dosage} • ${m.mealCondition || 'As prescribed'})`).join(', ') + `. Please take with water!`;
 
     const id = await Notifications.scheduleNotificationAsync({
       content: {
@@ -142,8 +142,8 @@ export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
       ? `⏰ TIME FOR MEDICATION: ${first.name}`
       : `⏰ TIME FOR MEDICATIONS (${medsArray.length} Pills)`;
     const body = medsArray.length === 1
-      ? `Dosage: ${first.dosage} (${first.mealCondition}). Please take it now!`
-      : `Prescriptions: ${names}. Take with water (${first.mealCondition})!`;
+      ? `Dosage: ${first.dosage} (${first.mealCondition || 'As prescribed'}). Please take it now!`
+      : `Prescriptions: ` + medsArray.map(m => `${m.name} (${m.dosage} • ${m.mealCondition || 'As prescribed'})`).join(', ') + `. Please take with water!`;
 
     const id = await Notifications.scheduleNotificationAsync({
       content: {

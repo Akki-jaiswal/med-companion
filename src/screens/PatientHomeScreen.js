@@ -184,23 +184,32 @@ export const PatientHomeScreen = ({ onNavigateMedicines }) => {
                 </View>
 
                 {/* Status and Action Buttons */}
-                <View style={styles.cardActions}>
-                  {!isTaken ? (
-                    <TouchableOpacity 
-                      style={styles.takeDoseBtn}
-                      onPress={() => markAsTaken(med.id)}
-                    >
-                      <Ionicons name="checkmark-sharp" size={18} color="#FFFFFF" />
-                      <Text style={[styles.takeDoseBtnText, largeFontMode && { fontSize: 16 }]}>
-                        Take Dose
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.statusBadgeTakenFull}>
-                      <Ionicons name="checkmark-done" size={16} color="#166534" />
-                      <Text style={styles.statusTextTaken}>Taken at {med.takenAt}</Text>
+                <View style={styles.cardActionsContainer}>
+                  {isMissed && !isTaken && (
+                    <View style={styles.missedNoticeBadge}>
+                      <Ionicons name="alert-circle" size={14} color="#DC2626" />
+                      <Text style={styles.missedNoticeText}>Alarm time passed • Tap below to record as taken</Text>
                     </View>
                   )}
+
+                  <View style={styles.cardActions}>
+                    {!isTaken ? (
+                      <TouchableOpacity 
+                        style={[styles.takeDoseBtn, isMissed && styles.takeDoseBtnMissed]}
+                        onPress={() => markAsTaken(med.id)}
+                      >
+                        <Ionicons name="checkmark-sharp" size={18} color="#FFFFFF" />
+                        <Text style={[styles.takeDoseBtnText, largeFontMode && { fontSize: 16 }]}>
+                          {isMissed ? 'Take Dose (Record as Taken)' : 'Take Dose'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.statusBadgeTakenFull}>
+                        <Ionicons name="checkmark-done" size={16} color="#166534" />
+                        <Text style={styles.statusTextTaken}>Taken at {med.takenAt}</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               </View>
             </TouchableOpacity>
@@ -466,9 +475,28 @@ const styles = StyleSheet.create({
     color: '#0D9488',
     fontWeight: '600',
   },
+  cardActionsContainer: {
+    marginTop: 14,
+  },
+  missedNoticeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 8,
+  },
+  missedNoticeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B91C1C',
+  },
   cardActions: {
     flexDirection: 'row',
-    marginTop: 14,
   },
   takeDoseBtn: {
     flex: 1,
@@ -484,6 +512,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
+  },
+  takeDoseBtnMissed: {
+    backgroundColor: '#D97706',
+    shadowColor: '#D97706',
   },
   takeDoseBtnText: {
     color: '#FFFFFF',

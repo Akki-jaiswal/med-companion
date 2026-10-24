@@ -262,3 +262,96 @@ export const deleteUserFromCloud = async (email) => {
     return false;
   }
 };
+
+/**
+ * 8. COMPLETE PATIENT PURGE FROM CLOUD FIRESTORE
+ * Deletes user doc, patient doc, all medications, escalations,
+ * and removes this patient from all caretaker accounts so caretaker mode no longer shows them!
+ */
+export const deletePatientCompletelyFromCloud = async (patientId, pairingCode, email) => {
+  if (!isFirebaseConfigured() || !db) return false;
+
+  try {
+    // 1. Delete user account document
+    if (email) {
+      const userEmailDoc = email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
+      await deleteDoc(doc(db, 'users', userEmailDoc)).catch(() => {});
+    }
+
+    // 2. Delete patient doc from 'patients'
+    if (patientId) {
+      await deleteDoc(doc(db, 'patients', patientId)).catch(() => {});
+    }
+    if (pairingCode) {
+      const qPat = query(collection(db, 'patients'), where('code', '==', pairingCode.toUpperCase()));
+      const snapPat = await getDocs(qPat);
+      snapPat.forEach(async (d) => {
+        await deleteDoc(d.ref).catch(() => {});
+      });
+    }
+
+    // 3. Purge all medications belonging to this patient
+    if (patientId) {
+      const qMeds = query(collection(db, 'medications'), where('patientId', '==', patientId));
+      const snapMeds = await getDocs(qMeds);
+      snapMeds.forEach(async (d) => {
+        await deleteDoc(d.ref).catch(() => {});
+      });
+    }
+
+    // 4. Purge escalations
+    if (patientId) {
+      const qEsc = query(collection(db, 'escalations'), where('patientId', '==', patientId));
+      const snapEsc = await getDocs(qEsc);
+      snapEsc.forEach(async (d) => {
+        await deleteDoc(d.ref).catch(() => {});
+      });
+    }
+
+    // 5. Remove this patient from any caretaker's linkedPatients array in Firestore
+    const snapAllUsers = await getDocs(collection(db, 'users'));
+    snapAllUsers.forEach(async (uDoc) => {
+      const uData = uDoc.data();
+      if (Array.isArray(uData.linkedPatients)) {
+        const filtered = uData.linkedPatients.filter(
+          p => p.id !== patientId && p.code !== pairingCode
+        );
+        if (filtered.length !== uData.linkedPatients.length) {
+          await updateDoc(uDoc.ref, { linkedPatients: filtered }).catch(() => {});
+        }
+      }
+    });
+
+    console.log(`[Backend] Purged patient ${patientId} and pairing code ${pairingCode} completely from Firestore`);
+    return true;
+  } catch (error) {
+    console.log('[Backend] Error deleting patient from cloud:', error.message);
+    return false;
+  }
+};
+
+/**
+ * 9. RESOLVE ACTIVE CLOUD ESCALATION
+ * Deactivates escalation in Firestore when patient marks pill taken.
+ */
+export const resolveCloudEscalation = async (patientId) => {
+  if (!isFirebaseConfigured() || !db || !patientId) return;
+
+  try {
+    const qEsc = query(
+      collection(db, 'escalations'),
+      where('patientId', '==', patientId),
+      where('active', '==', true)
+    );
+    const snap = await getDocs(qEsc);
+    snap.forEach(async (d) => {
+      await updateDoc(d.ref, { 
+        active: false, 
+        resolvedAt: new Date().toISOString() 
+      }).catch(() => {});
+    });
+    console.log(`[Backend] Resolved active cloud escalations for patient ${patientId}`);
+  } catch (error) {
+    console.log('[Backend] Error resolving cloud escalation:', error.message);
+  }
+};

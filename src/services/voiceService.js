@@ -9,12 +9,15 @@ export const speakMedicationReminder = (medOrMeds, patientName = 'Patient') => {
   let message = '';
   if (medsArray.length === 1) {
     const med = medsArray[0];
-    message = `Attention ${name}. It is time for your medication: ${med.name}. Dosage is ${med.dosage}. Please take it ${med.mealCondition}.`;
+    const timing = med.mealCondition ? med.mealCondition.toLowerCase() : 'as prescribed';
+    message = `Attention ${name}. It is time for your medication: ${med.name}. Dosage is ${med.dosage}. Please take it ${timing}.`;
   } else {
-    // Multi-pill combination speech (Disprin, Aspirin, Ranitidine, etc.)
-    const medNamesList = medsArray.map(m => `${m.name} (${m.dosage})`).join(', ');
-    const mealCond = medsArray[0]?.mealCondition || 'as prescribed';
-    message = `Attention ${name}. It is time for your combined medications: ${medNamesList}. Please take them ${mealCond} with a full glass of water.`;
+    // Dynamic per-tablet timing conditions (no static 'after meal')
+    const medInstructions = medsArray.map(m => {
+      const timing = m.mealCondition ? m.mealCondition.toLowerCase() : 'as prescribed';
+      return `${m.name}, ${m.dosage}, ${timing}`;
+    }).join('. ');
+    message = `Attention ${name}. It is time for your combined medications: ${medInstructions}. Please take them with a full glass of water.`;
   }
   
   Speech.stop();

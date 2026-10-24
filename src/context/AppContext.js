@@ -23,7 +23,9 @@ import {
   savePatientToCloud,
   saveUserToCloud,
   findUserInCloud,
-  deleteUserFromCloud
+  deleteUserFromCloud,
+  deletePatientCompletelyFromCloud,
+  resolveCloudEscalation
 } from '../services/firestoreService';
 
 const AppContext = createContext();
@@ -593,7 +595,7 @@ export const AppProvider = ({ children }) => {
     switchUserRole(role);
   };
 
-  // Mark medicine as Taken
+  // Mark medicine as Taken (Converts any previously missed status to Taken so reports remain 100% accurate!)
   const markAsTaken = async (medId) => {
     // Cancel the pending Caretaker Escalation notification because user took the pill!
     const pendingNotifId = pendingEscalationsRef.current[medId];
@@ -606,12 +608,37 @@ export const AppProvider = ({ children }) => {
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const todayStr = now.toISOString().split('T')[0];
 
+    let targetOwner = currentUser?.id || 'self';
+
     const updated = medications.map(m => {
       if (m.id === medId) {
         const targetOwnerId = m.patientId || currentUser?.id || 'self';
-        const newRecord = { date: todayStr, pillName: m.name, time: m.time, status: 'Taken', onTime: true };
+        targetOwner = targetOwnerId;
+
         setAdherenceHistory(prev => {
-          const nextHist = [newRecord, ...prev];
+          let convertedMissed = false;
+          // Look for any existing 'Missed' record for this medicine today
+          const nextHist = prev.map(rec => {
+            if (rec.date === todayStr && rec.pillName === m.name && rec.status === 'Missed' && !convertedMissed) {
+              convertedMissed = true;
+              // Convert missed into taken!
+              return { ...rec, status: 'Taken', onTime: false, takenAt: timeStr };
+            }
+            return rec;
+          });
+
+          // If no previous missed record was found, add a clean Taken record
+          if (!convertedMissed) {
+            nextHist.unshift({ 
+              date: todayStr, 
+              pillName: m.name, 
+              time: m.time, 
+              status: 'Taken', 
+              onTime: true, 
+              takenAt: timeStr 
+            });
+          }
+
           if (currentUser?.id) {
             AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
           }
@@ -621,6 +648,7 @@ export const AppProvider = ({ children }) => {
           AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
           return nextHist;
         });
+
         return { ...m, statusToday: 'taken', takenAt: timeStr };
       }
       return m;
@@ -628,6 +656,10 @@ export const AppProvider = ({ children }) => {
 
     saveMedications(updated);
     setActiveAlarmMeds(prev => prev.filter(m => m.id !== medId));
+
+    // Resolve any active escalation alert in memory & in Firestore
+    setEscalationAlert(null);
+    resolveCloudEscalation(targetOwner).catch(() => {});
 
     await updateMedicationStatusInCloud(medId, 'taken', timeStr);
   };
@@ -639,6 +671,8 @@ export const AppProvider = ({ children }) => {
     const todayStr = now.toISOString().split('T')[0];
     const medIds = new Set(activeAlarmMeds.map(m => m.id));
 
+    let targetOwner = currentUser?.id || 'self';
+
     for (const m of activeAlarmMeds) {
       const pendingNotifId = pendingEscalationsRef.current[m.id];
       if (pendingNotifId) {
@@ -646,9 +680,29 @@ export const AppProvider = ({ children }) => {
         delete pendingEscalationsRef.current[m.id];
       }
       const targetOwnerId = m.patientId || currentUser?.id || 'self';
-      const newRecord = { date: todayStr, pillName: m.name, time: m.time, status: 'Taken', onTime: true };
+      targetOwner = targetOwnerId;
+
       setAdherenceHistory(prev => {
-        const nextHist = [newRecord, ...prev];
+        let convertedMissed = false;
+        const nextHist = prev.map(rec => {
+          if (rec.date === todayStr && rec.pillName === m.name && rec.status === 'Missed' && !convertedMissed) {
+            convertedMissed = true;
+            return { ...rec, status: 'Taken', onTime: false, takenAt: timeStr };
+          }
+          return rec;
+        });
+
+        if (!convertedMissed) {
+          nextHist.unshift({ 
+            date: todayStr, 
+            pillName: m.name, 
+            time: m.time, 
+            status: 'Taken', 
+            onTime: true, 
+            takenAt: timeStr 
+          });
+        }
+
         if (currentUser?.id) {
           AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
         }
@@ -658,12 +712,15 @@ export const AppProvider = ({ children }) => {
         AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
         return nextHist;
       });
+
       updateMedicationStatusInCloud(m.id, 'taken', timeStr).catch(() => {});
     }
 
     const updated = medications.map(m => medIds.has(m.id) ? { ...m, statusToday: 'taken', takenAt: timeStr } : m);
     saveMedications(updated);
     setActiveAlarmMeds([]);
+    setEscalationAlert(null);
+    resolveCloudEscalation(targetOwner).catch(() => {});
   };
 
   // Patient snoozes alarm (single or combo)
@@ -1006,27 +1063,52 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Permanently Delete Current User Account
+  // Permanently Delete Current User Account (Purges from Cloud Firestore & unlinks from Caretaker mode!)
   const deleteUserAccount = async () => {
     if (!currentUser) return;
     const emailKey = currentUser.email?.toLowerCase();
     const userId = currentUser.id;
+    const pairingCode = currentUser.pairingCode;
 
     try {
-      // 1. Remove from local registered users map
+      // 1. Remove from local registered users map AND un-link from any caretaker accounts
       const mapStr = await AsyncStorage.getItem('@registered_users_map');
       if (mapStr) {
         const usersMap = JSON.parse(mapStr);
         if (emailKey && usersMap[emailKey]) {
           delete usersMap[emailKey];
-          await AsyncStorage.setItem('@registered_users_map', JSON.stringify(usersMap));
         }
+
+        // Scan all other registered users (e.g. Dr. Sharma / caretakers on this device)
+        // and remove this patient so caretaker mode will no longer see them!
+        for (const key of Object.keys(usersMap)) {
+          const u = usersMap[key];
+          if (Array.isArray(u.linkedPatients)) {
+            u.linkedPatients = u.linkedPatients.filter(
+              p => p.id !== userId && p.code !== pairingCode
+            );
+          }
+          if (u.id) {
+            try {
+              const uPatStr = await AsyncStorage.getItem(`@patients_${u.id}`);
+              if (uPatStr) {
+                const uPats = JSON.parse(uPatStr).filter(
+                  p => p.id !== userId && p.code !== pairingCode
+                );
+                await AsyncStorage.setItem(`@patients_${u.id}`, JSON.stringify(uPats));
+              }
+            } catch (err) {}
+          }
+        }
+        await AsyncStorage.setItem('@registered_users_map', JSON.stringify(usersMap));
       }
 
       // 2. Remove user-scoped data
       if (userId) {
         await AsyncStorage.removeItem(`@patients_${userId}`);
         await AsyncStorage.removeItem(`@medications_${userId}`);
+        await AsyncStorage.removeItem(`@patient_medications_${userId}`);
+        await AsyncStorage.removeItem(`@adherence_history_${userId}`);
       }
 
       // 3. Clear session keys
@@ -1036,10 +1118,8 @@ export const AppProvider = ({ children }) => {
       await AsyncStorage.removeItem('@medications');
       await AsyncStorage.removeItem('@adherence_history');
 
-      // 4. Delete from Cloud Firestore if configured
-      if (emailKey) {
-        await deleteUserFromCloud(emailKey);
-      }
+      // 4. Completely purge from Cloud Firestore (user doc, patient doc, medications, escalations & caretaker links!)
+      await deletePatientCompletelyFromCloud(userId, pairingCode, emailKey);
 
       // 5. Reset all in-memory states
       setCurrentUser(null);
@@ -1050,6 +1130,8 @@ export const AppProvider = ({ children }) => {
       setAdherenceHistory([]);
       setActiveAlarmMed(null);
       setEscalationAlert(null);
+      firedAlarmIdsRef.current.clear();
+      pendingEscalationsRef.current = {};
     } catch (e) {
       console.log('Error deleting account:', e);
     }

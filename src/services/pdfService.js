@@ -200,14 +200,13 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
   try {
     const file = await Print.printToFileAsync({ html: htmlContent });
     
-    // On Android, printToFileAsync writes to a restricted cache directory that sharing cannot access.
-    // Moving the file to FileSystem.documentDirectory guarantees file provider read permissions.
+    // expo-sharing's Android FileProvider requires local files residing in cacheDirectory with file:// prefix!
     const cleanFileName = `MedCompanion_Adherence_Report_${Date.now()}.pdf`;
     let targetUri = file.uri;
 
     try {
-      if (FileSystem.documentDirectory) {
-        const destUri = `${FileSystem.documentDirectory}${cleanFileName}`;
+      if (FileSystem.cacheDirectory) {
+        const destUri = `${FileSystem.cacheDirectory}${cleanFileName}`;
         await FileSystem.copyAsync({
           from: file.uri,
           to: destUri,
@@ -215,17 +214,29 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
         targetUri = destUri;
       }
     } catch (fsErr) {
-      console.log('FileSystem copy fallback:', fsErr.message);
+      console.log('FileSystem cache copy fallback:', fsErr.message);
     }
 
+    if (!targetUri.startsWith('file://')) {
+      targetUri = `file://${targetUri}`;
+    }
+
+    let shared = false;
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(targetUri, { 
-        dialogTitle: 'Export Doctor-Ready Medical Adherence Report',
-        mimeType: 'application/pdf',
-        UTI: 'com.adobe.pdf' 
-      });
-    } else {
-      // Fallback: Directly open system print dialogue
+      try {
+        await Sharing.shareAsync(targetUri, { 
+          dialogTitle: 'Export Doctor-Ready Medical Adherence Report',
+          mimeType: 'application/pdf',
+          UTI: 'com.adobe.pdf' 
+        });
+        shared = true;
+      } catch (shareErr) {
+        console.log('Sharing.shareAsync fallback to Print:', shareErr.message);
+      }
+    }
+
+    if (!shared) {
+      // Fallback: Directly open native system print / Save as PDF dialogue
       await Print.printAsync({ html: htmlContent });
     }
   } catch (error) {
