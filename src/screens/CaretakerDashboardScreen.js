@@ -249,7 +249,11 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
       )}
 
       {/* Modals */}
-      <AddMedicationModal visible={addMedModalVisible} onClose={() => setAddMedModalVisible(false)} />
+      <AddMedicationModal 
+        visible={addMedModalVisible} 
+        onClose={() => setAddMedModalVisible(false)} 
+        patientId={currentPatient?.id} 
+      />
       <PairPatientModal visible={pairModalVisible} onClose={() => setPairModalVisible(false)} />
 
       <View style={{ height: 40 }} />
