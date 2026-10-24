@@ -9,6 +9,9 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
   const [time, setTime] = useState('08:00 AM');
+  const [selectedHour, setSelectedHour] = useState('08');
+  const [selectedMinute, setSelectedMinute] = useState('00');
+  const [selectedPeriod, setSelectedPeriod] = useState('AM');
   const [mealCondition, setMealCondition] = useState('After Meal');
   const [frequency, setFrequency] = useState('Daily');
   const [selectedDays, setSelectedDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
@@ -18,6 +21,8 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
 
   const colorOptions = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'];
   const allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const hoursList = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+  const minutesList = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
 
   const timePresets = [
     { label: '⚡ Test in 1 Min', value: 'In 1 Minute' },
@@ -26,18 +31,88 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
     { label: '🌙 Night (08:30 PM)', value: '08:30 PM' },
   ];
 
-  const frequencyOptions = [
-    { id: 'Daily', label: 'Every Day', icon: 'calendar-outline' },
-    { id: 'Specific Days', label: 'Specific Days', icon: 'checkbox-outline' },
-    { id: 'Weekly', label: 'Weekly', icon: 'repeat-outline' },
-    { id: 'Alternate Days', label: 'Alternate Days', icon: 'swap-horizontal-outline' },
-  ];
+  const parseTimeString = (tStr) => {
+    if (!tStr) return { hour: '08', minute: '00', period: 'AM' };
+    const match = tStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (match) {
+      let h = parseInt(match[1], 10);
+      let m = match[2];
+      let p = (match[3] || 'AM').toUpperCase();
+      return {
+        hour: h.toString().padStart(2, '0'),
+        minute: m.padStart(2, '0'),
+        period: p,
+      };
+    }
+    return { hour: '08', minute: '00', period: 'AM' };
+  };
+
+  const applyTime = (h, m, p) => {
+    setSelectedHour(h);
+    setSelectedMinute(m);
+    setSelectedPeriod(p);
+    setTime(`${h}:${m} ${p}`);
+  };
+
+  const togglePeriod = () => {
+    const nextP = selectedPeriod === 'AM' ? 'PM' : 'AM';
+    setSelectedPeriod(nextP);
+    setTime(`${selectedHour}:${selectedMinute} ${nextP}`);
+  };
+
+  const handlePeriodButtonPress = (targetP) => {
+    if (selectedPeriod === targetP) {
+      togglePeriod();
+    } else {
+      setSelectedPeriod(targetP);
+      setTime(`${selectedHour}:${selectedMinute} ${targetP}`);
+    }
+  };
+
+  const stepHour = (delta) => {
+    let h = parseInt(selectedHour, 10) + delta;
+    if (h > 12) h = 1;
+    if (h < 1) h = 12;
+    const hStr = h.toString().padStart(2, '0');
+    setSelectedHour(hStr);
+    setTime(`${hStr}:${selectedMinute} ${selectedPeriod}`);
+  };
+
+  const stepMinute = (delta) => {
+    let m = parseInt(selectedMinute, 10) + delta;
+    if (m >= 60) m = 0;
+    if (m < 0) m = 59;
+    const mStr = m.toString().padStart(2, '0');
+    setSelectedMinute(mStr);
+    setTime(`${selectedHour}:${mStr} ${selectedPeriod}`);
+  };
+
+  const setTestIn1Min = () => {
+    const d = new Date(Date.now() + 65 * 1000);
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const p = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    const hStr = h.toString().padStart(2, '0');
+    const mStr = m.toString().padStart(2, '0');
+    applyTime(hStr, mStr, p);
+  };
+
+  const handlePresetSelect = (preset) => {
+    if (preset.value === 'In 1 Minute') {
+      setTestIn1Min();
+    } else {
+      const parsed = parseTimeString(preset.value);
+      applyTime(parsed.hour, parsed.minute, parsed.period);
+    }
+  };
 
   useEffect(() => {
     if (medicationToEdit) {
       setName(medicationToEdit.name || '');
       setDosage(medicationToEdit.dosage || '');
-      setTime(medicationToEdit.time || '08:00 AM');
+      const parsed = parseTimeString(medicationToEdit.time || '08:00 AM');
+      applyTime(parsed.hour, parsed.minute, parsed.period);
       setMealCondition(medicationToEdit.mealCondition || 'After Meal');
       setFrequency(medicationToEdit.frequency || 'Daily');
       setSelectedDays(medicationToEdit.selectedDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
@@ -47,7 +122,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
     } else {
       setName('');
       setDosage('');
-      setTime('08:00 AM');
+      applyTime('08', '00', 'AM');
       setMealCondition('After Meal');
       setFrequency('Daily');
       setSelectedDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
@@ -211,28 +286,169 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
               </View>
             )}
 
-            <Text style={styles.label}>Alarm Time *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 08:30 AM"
-              placeholderTextColor="#94A3B8"
-              value={time}
-              onChangeText={setTime}
-            />
+            {/* ALARM TIME WHEEL / NUMBER PICKER SECTION */}
+            <View style={styles.timeSectionBox}>
+              <View style={styles.timeSectionHeaderRow}>
+                <Ionicons name="time" size={18} color="#0D9488" />
+                <Text style={styles.timeSectionTitle}>Alarm Time</Text>
+              </View>
 
-            {/* Quick Time Presets */}
-            <View style={styles.presetsRow}>
-              {timePresets.map((preset) => (
-                <TouchableOpacity
-                  key={preset.value}
-                  style={[styles.presetBadge, time === preset.value && styles.presetBadgeActive]}
-                  onPress={() => setTime(preset.value)}
+              {/* Digital Clock Banner with interactive elements */}
+              <View style={styles.digitalClockCard}>
+                <View style={styles.digitalDisplayRow}>
+                  {/* Hour Box & Up/Down Stepper */}
+                  <View style={styles.digitalNumBox}>
+                    <TouchableOpacity style={styles.stepperArrow} onPress={() => stepHour(1)} activeOpacity={0.7}>
+                      <Ionicons name="chevron-up" size={20} color="#0D9488" />
+                    </TouchableOpacity>
+                    <Text style={styles.digitalNumText}>{selectedHour}</Text>
+                    <TouchableOpacity style={styles.stepperArrow} onPress={() => stepHour(-1)} activeOpacity={0.7}>
+                      <Ionicons name="chevron-down" size={20} color="#0D9488" />
+                    </TouchableOpacity>
+                    <Text style={styles.digitalUnitLabel}>HOUR</Text>
+                  </View>
+
+                  <Text style={styles.digitalColon}>:</Text>
+
+                  {/* Minute Box & Up/Down Stepper */}
+                  <View style={styles.digitalNumBox}>
+                    <TouchableOpacity style={styles.stepperArrow} onPress={() => stepMinute(1)} activeOpacity={0.7}>
+                      <Ionicons name="chevron-up" size={20} color="#0D9488" />
+                    </TouchableOpacity>
+                    <Text style={styles.digitalNumText}>{selectedMinute}</Text>
+                    <TouchableOpacity style={styles.stepperArrow} onPress={() => stepMinute(-1)} activeOpacity={0.7}>
+                      <Ionicons name="chevron-down" size={20} color="#0D9488" />
+                    </TouchableOpacity>
+                    <Text style={styles.digitalUnitLabel}>MIN</Text>
+                  </View>
+
+                  {/* AM/PM Pill: Tap directly to flip AM <-> PM */}
+                  <TouchableOpacity 
+                    style={[
+                      styles.periodTogglePill, 
+                      selectedPeriod === 'PM' ? styles.periodTogglePillPM : styles.periodTogglePillAM
+                    ]}
+                    onPress={togglePeriod}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons 
+                      name={selectedPeriod === 'AM' ? 'sunny' : 'moon'} 
+                      size={20} 
+                      color="#FFFFFF" 
+                    />
+                    <Text style={styles.periodToggleText}>{selectedPeriod}</Text>
+                    <Text style={styles.periodFlipHint}>Tap to flip</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* AM / PM Select Buttons */}
+                <View style={styles.ampmButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.ampmBtn, selectedPeriod === 'AM' && styles.ampmBtnActive]}
+                    onPress={() => handlePeriodButtonPress('AM')}
+                  >
+                    <Ionicons 
+                      name="sunny" 
+                      size={15} 
+                      color={selectedPeriod === 'AM' ? '#FFFFFF' : '#64748B'} 
+                    />
+                    <Text style={[styles.ampmBtnText, selectedPeriod === 'AM' && styles.ampmBtnTextActive]}>
+                      AM (Morning)
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.ampmBtn, selectedPeriod === 'PM' && styles.ampmBtnActive]}
+                    onPress={() => handlePeriodButtonPress('PM')}
+                  >
+                    <Ionicons 
+                      name="moon" 
+                      size={15} 
+                      color={selectedPeriod === 'PM' ? '#FFFFFF' : '#64748B'} 
+                    />
+                    <Text style={[styles.ampmBtnText, selectedPeriod === 'PM' && styles.ampmBtnTextActive]}>
+                      PM (Evening/Night)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Scrollable Hours Number Strip (1 to 12) */}
+              <View style={styles.numberStripBox}>
+                <Text style={styles.numberStripLabel}>Hour (Scroll & Tap):</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.numberStripScroll}
                 >
-                  <Text style={[styles.presetText, time === preset.value && styles.presetTextActive]}>
-                    {preset.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                  {hoursList.map((h) => {
+                    const isSelected = selectedHour === h;
+                    return (
+                      <TouchableOpacity
+                        key={h}
+                        style={[styles.numberChip, isSelected && styles.numberChipActive]}
+                        onPress={() => {
+                          setSelectedHour(h);
+                          setTime(`${h}:${selectedMinute} ${selectedPeriod}`);
+                        }}
+                      >
+                        <Text style={[styles.numberChipText, isSelected && styles.numberChipTextActive]}>
+                          {h}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Scrollable Minutes Number Strip (00 to 55) */}
+              <View style={styles.numberStripBox}>
+                <Text style={styles.numberStripLabel}>Minute (Scroll & Tap):</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.numberStripScroll}
+                >
+                  {minutesList.map((m) => {
+                    const isSelected = selectedMinute === m;
+                    return (
+                      <TouchableOpacity
+                        key={m}
+                        style={[styles.numberChip, isSelected && styles.numberChipActive]}
+                        onPress={() => {
+                          setSelectedMinute(m);
+                          setTime(`${selectedHour}:${m} ${selectedPeriod}`);
+                        }}
+                      >
+                        <Text style={[styles.numberChipText, isSelected && styles.numberChipTextActive]}>
+                          {m}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Quick Presets */}
+              <View style={styles.presetsRow}>
+                {timePresets.map((preset) => (
+                  <TouchableOpacity
+                    key={preset.value}
+                    style={[
+                      styles.presetBadge, 
+                      time === preset.value && styles.presetBadgeActive
+                    ]}
+                    onPress={() => handlePresetSelect(preset)}
+                  >
+                    <Text style={[
+                      styles.presetText, 
+                      time === preset.value && styles.presetTextActive
+                    ]}>
+                      {preset.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
             <Text style={styles.label}>Meal Timing</Text>
@@ -549,6 +765,165 @@ const styles = StyleSheet.create({
   saveBtnText: {
     fontSize: 16,
     fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  timeSectionBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  timeSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  timeSectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  digitalClockCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  digitalDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 6,
+  },
+  digitalNumBox: {
+    alignItems: 'center',
+    minWidth: 54,
+  },
+  stepperArrow: {
+    padding: 4,
+  },
+  digitalNumText: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#0F172A',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 1,
+  },
+  digitalUnitLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  digitalColon: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#0D9488',
+    marginBottom: 10,
+  },
+  periodTogglePill: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginLeft: 6,
+    minWidth: 70,
+  },
+  periodTogglePillAM: {
+    backgroundColor: '#0D9488',
+  },
+  periodTogglePillPM: {
+    backgroundColor: '#6366F1',
+  },
+  periodToggleText: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 2,
+  },
+  periodFlipHint: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#F1F5F9',
+    marginTop: 1,
+  },
+  ampmButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    width: '100%',
+  },
+  ampmBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  ampmBtnActive: {
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
+  },
+  ampmBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  ampmBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  numberStripBox: {
+    marginTop: 12,
+  },
+  numberStripLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 6,
+  },
+  numberStripScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  numberChip: {
+    width: 44,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numberChipActive: {
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
+  },
+  numberChipText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  numberChipTextActive: {
     color: '#FFFFFF',
   },
 });

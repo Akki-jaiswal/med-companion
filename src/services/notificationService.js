@@ -10,7 +10,6 @@ try {
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
-        priority: Notifications.AndroidNotificationPriority?.MAX,
       }),
     });
   }
@@ -221,4 +220,28 @@ export const triggerCaretakerPushAlert = async (patientName, pillName, scheduled
   } catch (error) {
     console.log('triggerCaretakerPushAlert note:', error.message);
   }
+};
+
+// Listener for when patient taps on the system notification in the notification bar
+export const addNotificationResponseListener = (callback) => {
+  try {
+    if (Notifications?.addNotificationResponseReceivedListener) {
+      return Notifications.addNotificationResponseReceivedListener(callback);
+    }
+  } catch (e) {
+    console.log('addNotificationResponseListener note:', e.message);
+  }
+  return { remove: () => {} };
+};
+
+// Listener for when a notification is received in foreground/background
+export const addNotificationReceivedListener = (callback) => {
+  try {
+    if (Notifications?.addNotificationReceivedListener) {
+      return Notifications.addNotificationReceivedListener(callback);
+    }
+  } catch (e) {
+    console.log('addNotificationReceivedListener note:', e.message);
+  }
+  return { remove: () => {} };
 };

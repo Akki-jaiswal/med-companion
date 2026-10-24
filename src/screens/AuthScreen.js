@@ -12,11 +12,15 @@ export const AuthScreen = ({ onClose }) => {
   const [isPatientSelected, setIsPatientSelected] = useState(true);
   const [isCaretakerSelected, setIsCaretakerSelected] = useState(false);
 
-  // Common user fields
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
+  // Create Account form fields (Completely separated from Sign In)
+  const [signUpName, setSignUpName] = useState('');
+  const [signUpEmail, setSignUpEmail] = useState('');
+  const [signUpPassword, setSignUpPassword] = useState('');
+  const [signUpPhone, setSignUpPhone] = useState('');
+
+  // Sign In form fields (Completely isolated)
+  const [signInEmail, setSignInEmail] = useState('');
+  const [signInPassword, setSignInPassword] = useState('');
 
   // Patient required fields
   const [emergencyCaretakerPhone, setEmergencyCaretakerPhone] = useState('');
@@ -45,19 +49,19 @@ export const AuthScreen = ({ onClose }) => {
       }
 
       // 2. Validate common required fields
-      if (!name.trim()) {
+      if (!signUpName.trim()) {
         Alert.alert('Required Field', 'Please enter your full name.');
         return;
       }
-      if (!email.trim() || !email.includes('@')) {
+      if (!signUpEmail.trim() || !signUpEmail.includes('@')) {
         Alert.alert('Required Field', 'Please enter a valid email address.');
         return;
       }
-      if (!password.trim() || password.length < 4) {
+      if (!signUpPassword.trim() || signUpPassword.length < 4) {
         Alert.alert('Required Field', 'Please create a password of at least 4 characters.');
         return;
       }
-      if (!phone.trim()) {
+      if (!signUpPhone.trim()) {
         Alert.alert('Required Field', 'Please enter your phone number.');
         return;
       }
@@ -88,10 +92,10 @@ export const AuthScreen = ({ onClose }) => {
       if (isCaretakerSelected) selectedRoles.push('CARETAKER');
 
       const regRes = await registerUser({
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        password,
-        phone: phone.trim(),
+        name: signUpName.trim(),
+        email: signUpEmail.trim().toLowerCase(),
+        password: signUpPassword,
+        phone: signUpPhone.trim(),
         roles: selectedRoles,
         emergencyCaretakerPhone: isPatientSelected ? emergencyCaretakerPhone.trim() : '',
         age: isPatientSelected ? age.trim() : null,
@@ -110,15 +114,15 @@ export const AuthScreen = ({ onClose }) => {
           ? 'Registered in Patient Mode!' 
           : 'Registered in Caretaker Mode!';
 
-      Alert.alert('Account Created', `Welcome to MedCompanion, ${name}! ${modeMessage}`);
+      Alert.alert('Account Created', `Welcome to MedCompanion, ${signUpName}! ${modeMessage}`);
       if (onClose) onClose();
     } else {
-      if (!email.trim() || !password.trim()) {
+      if (!signInEmail.trim() || !signInPassword.trim()) {
         Alert.alert('Required Fields', 'Please enter your email and password.');
         return;
       }
 
-      const res = await loginUser(email.trim().toLowerCase(), password);
+      const res = await loginUser(signInEmail.trim().toLowerCase(), signInPassword);
       if (!res || !res.success) {
         Alert.alert('Sign In Failed', res?.error || 'Unable to sign in. Please verify your credentials.');
         return;
@@ -267,8 +271,8 @@ export const AuthScreen = ({ onClose }) => {
               <TextInput
                 style={styles.input}
                 placeholder="Enter your full name"
-                value={name}
-                onChangeText={setName}
+                value={signUpName}
+                onChangeText={setSignUpName}
               />
 
               {/* Common: Email Address */}
@@ -278,8 +282,8 @@ export const AuthScreen = ({ onClose }) => {
                 placeholder="name@example.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
+                value={signUpEmail}
+                onChangeText={setSignUpEmail}
               />
 
               {/* Common: Password */}
@@ -288,8 +292,8 @@ export const AuthScreen = ({ onClose }) => {
                 style={styles.input}
                 placeholder="Create a password (min 4 characters)"
                 secureTextEntry
-                value={password}
-                onChangeText={setPassword}
+                value={signUpPassword}
+                onChangeText={setSignUpPassword}
               />
 
               {/* Common: Phone */}
@@ -298,8 +302,8 @@ export const AuthScreen = ({ onClose }) => {
                 style={styles.input}
                 placeholder="e.g. +91 9876543210"
                 keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
+                value={signUpPhone}
+                onChangeText={setSignUpPhone}
               />
 
               {/* PATIENT REQUIRED ENTRIES */}
@@ -382,8 +386,8 @@ export const AuthScreen = ({ onClose }) => {
               placeholder="name@example.com"
               keyboardType="email-address"
               autoCapitalize="none"
-              value={email}
-              onChangeText={setEmail}
+              value={signInEmail}
+              onChangeText={setSignInEmail}
             />
 
             <Text style={styles.fieldLabel}>Password *</Text>
@@ -391,8 +395,8 @@ export const AuthScreen = ({ onClose }) => {
               style={styles.input}
               placeholder="••••••••"
               secureTextEntry
-              value={password}
-              onChangeText={setPassword}
+              value={signInPassword}
+              onChangeText={setSignInPassword}
             />
 
             <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
@@ -408,7 +412,7 @@ export const AuthScreen = ({ onClose }) => {
           onPress={() => {
             Alert.alert(
               'Reset All App Data',
-              'This will erase all accounts, medications, and records from this device so you can start 100% fresh. Continue?',
+              'This clears all cached accounts, medications, and local offline data from this phone so you can test from a clean slate. (Remote accounts on other devices are unaffected).\n\nContinue with fresh reset?',
               [
                 { text: 'Cancel', style: 'cancel' },
                 { 
@@ -416,7 +420,13 @@ export const AuthScreen = ({ onClose }) => {
                   style: 'destructive', 
                   onPress: async () => {
                     await resetEntireAppData();
-                    Alert.alert('Clean Slate Ready', 'All data has been wiped. You can now register as a brand new Patient.');
+                    setSignUpName('');
+                    setSignUpEmail('');
+                    setSignUpPassword('');
+                    setSignUpPhone('');
+                    setSignInEmail('');
+                    setSignInPassword('');
+                    Alert.alert('Clean Slate Ready', 'All local data has been wiped. You can now register as a brand new Patient.');
                   } 
                 }
               ]
@@ -426,6 +436,9 @@ export const AuthScreen = ({ onClose }) => {
           <Ionicons name="trash-bin-outline" size={16} color="#64748B" />
           <Text style={styles.cleanSlateBtnText}>Reset All Local Data (Start Fresh)</Text>
         </TouchableOpacity>
+        <Text style={styles.cleanSlateDesc}>
+          Clears local offline storage and cached sessions on this device for testing.
+        </Text>
 
         <View style={{ height: 50 }} />
       </ScrollView>
@@ -717,5 +730,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#64748B',
+  },
+  cleanSlateDesc: {
+    fontSize: 11,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 6,
+    paddingHorizontal: 20,
   },
 });

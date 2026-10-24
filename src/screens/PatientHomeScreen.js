@@ -151,7 +151,6 @@ export const PatientHomeScreen = ({ onNavigateMedicines }) => {
                   <Text style={[
                     styles.medName, 
                     largeFontMode && { fontSize: 21 },
-                    isTaken && styles.textStrikethrough
                   ]}>
                     {med.name}
                   </Text>
@@ -372,13 +371,15 @@ const styles = StyleSheet.create({
     color: '#1E293B',
   },
   dateBadge: {
-    fontSize: 13,
-    fontWeight: '600',
+    alignSelf: 'flex-start',
+    fontSize: 12,
+    fontWeight: '700',
     color: '#0D9488',
     backgroundColor: '#CCFBF1',
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginTop: 4,
   },
   medCard: {
     flexDirection: 'row',
@@ -582,22 +583,21 @@ const styles = StyleSheet.create({
   addMedEmptyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     backgroundColor: '#0D9488',
     paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 14,
-    width: '100%',
-    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
     shadowColor: '#0D9488',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   addMedEmptyBtnText: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   headerAddBtn: {
@@ -618,12 +618,13 @@ const styles = StyleSheet.create({
   },
   emptyActionsRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-    width: '100%',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   viewPrescriptionsBtn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -631,8 +632,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#CBD5E1',
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
   },
   viewPrescriptionsBtnText: {
     fontSize: 14,

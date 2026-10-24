@@ -8,7 +8,9 @@ import {
   fireInstantMedicationNotification,
   scheduleCaretakerEscalationNotification,
   cancelScheduledNotification,
-  triggerCaretakerPushAlert 
+  triggerCaretakerPushAlert,
+  addNotificationResponseListener,
+  addNotificationReceivedListener
 } from '../services/notificationService';
 import { sendMissedMedicationSMS } from '../services/emergencyService';
 import {
@@ -44,8 +46,13 @@ const parseTimeToTimestamp = (timeStr, createdAt = Date.now()) => {
     if (modifier === 'PM' && hours < 12) hours += 12;
     if (modifier === 'AM' && hours === 12) hours = 0;
 
-    const target = new Date();
+    const target = new Date(createdAt);
     target.setHours(hours, minutes, 0, 0);
+
+    // If scheduled time for today has already elapsed by more than 30 seconds, schedule for next occurrence (tomorrow)
+    if (target.getTime() < createdAt - 30000) {
+      target.setDate(target.getDate() + 1);
+    }
 
     return target.getTime();
   } catch (e) {
@@ -153,7 +160,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // AppState listener: catches alarms when user switches back from home screen / background!
+  // AppState & Android System Notification Tray Listener: catches alarms when user switches back or taps tray notification
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
@@ -161,8 +168,34 @@ export const AppProvider = ({ children }) => {
       }
     });
 
-    return () => subscription.remove();
-  }, [medications]);
+    // When patient taps on the urgent notification in phone status bar, instantly display AlarmModal
+    const responseSub = addNotificationResponseListener((response) => {
+      const data = response?.notification?.request?.content?.data;
+      if (data?.medIds && Array.isArray(data.medIds) && userRole === 'PATIENT') {
+        const matched = medications.filter(m => data.medIds.includes(m.id));
+        if (matched.length > 0) {
+          setActiveAlarmMeds(matched);
+        } else {
+          checkPendingAlarms();
+        }
+      } else {
+        checkPendingAlarms();
+      }
+    });
+
+    const receivedSub = addNotificationReceivedListener((notification) => {
+      const data = notification?.request?.content?.data;
+      if (data?.type === 'medication_alarm' && userRole === 'PATIENT') {
+        checkPendingAlarms();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      if (responseSub?.remove) responseSub.remove();
+      if (receivedSub?.remove) receivedSub.remove();
+    };
+  }, [medications, userRole]);
 
   // Request system notification permissions & load storage on launch
   useEffect(() => {
