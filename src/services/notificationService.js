@@ -110,14 +110,17 @@ export const schedulePreAlarmNotification = async (medOrMeds, delaySeconds = 300
     const id = await Notifications.scheduleNotificationAsync({
       content: {
         title: `⏰ Upcoming in 10 mins: ${names}`,
-        body: `Scheduled for ${first.time} (${first.mealCondition}). Keep your water ready!`,
+        body: `Scheduled for ${first.time} (${first.mealCondition || 'As prescribed'}). Keep your water ready!`,
         sound: 'default',
         priority: Notifications.AndroidNotificationPriority?.HIGH,
         channelId: 'medication-reminders',
         data: { medIds: medsArray.map(m => m.id), type: 'pre_alarm' },
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL || 'timeInterval',
         seconds: safeSeconds,
+        repeats: false,
+        channelId: 'medication-reminders',
       },
     });
     return id;
@@ -155,13 +158,44 @@ export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
         data: { medIds: medsArray.map(m => m.id), type: 'medication_alarm' },
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL || 'timeInterval',
         seconds: safeSeconds,
+        repeats: false,
+        channelId: 'medication-alarms',
       },
     });
     return id;
   } catch (error) {
     console.log('scheduleMedicationAlarm note:', error.message);
     return null;
+  }
+};
+
+// Test notification helper for user to verify system notifications in background within 5s
+export const scheduleTestAlarmNotification = async (seconds = 5) => {
+  try {
+    if (!Notifications?.scheduleNotificationAsync) return false;
+    const safeSec = Math.max(1, seconds);
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '⏰ MEDCOMPANION ALARM TEST',
+        body: `Test alarm notification fired in ${safeSec}s! Tap here to return to MedCompanion.`,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority?.MAX,
+        channelId: 'medication-alarms',
+        data: { type: 'test_alarm' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL || 'timeInterval',
+        seconds: safeSec,
+        repeats: false,
+        channelId: 'medication-alarms',
+      },
+    });
+    return true;
+  } catch (e) {
+    console.log('scheduleTestAlarmNotification note:', e.message);
+    return false;
   }
 };
 

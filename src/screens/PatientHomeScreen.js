@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { sendSOSAlert } from '../services/emergencyService';
 import { speakMedicationReminder } from '../services/voiceService';
+import { scheduleTestAlarmNotification } from '../services/notificationService';
 import { MedicineDetailModal } from './MedicineDetailModal';
 import { AddMedicationModal } from './AddMedicationModal';
 
@@ -42,7 +43,36 @@ export const PatientHomeScreen = ({ onNavigateMedicines }) => {
     m.patientId === currentUser?.pairingCode
   );
 
-  const todayMeds = patientMeds.filter(isScheduledForToday);
+  // Helper to convert time strings (e.g. "08:30 AM", "01:15 PM") to minutes from midnight for sorting
+  const getTimeInMinutes = (timeStr) => {
+    if (!timeStr) return 0;
+    try {
+      const parts = timeStr.trim().split(' ');
+      const timeParts = parts[0].split(':');
+      let hours = parseInt(timeParts[0], 10);
+      const minutes = parseInt(timeParts[1], 10) || 0;
+      const modifier = (parts[1] || 'AM').toUpperCase();
+      if (modifier === 'PM' && hours < 12) hours += 12;
+      if (modifier === 'AM' && hours === 12) hours = 0;
+      return hours * 60 + minutes;
+    } catch (e) {
+      return 0;
+    }
+  };
+
+  // Stack sorting:
+  // 1. Active / Pending / Missed pills sit at the top, ordered chronologically by scheduled time
+  // 2. Taken pills get pushed to the bottom of the stack
+  const todayMedsRaw = patientMeds.filter(isScheduledForToday);
+  const todayMeds = [...todayMedsRaw].sort((a, b) => {
+    const aTaken = a.statusToday === 'taken';
+    const bTaken = b.statusToday === 'taken';
+    if (aTaken !== bTaken) {
+      return aTaken ? 1 : -1; // untaken first, taken at bottom
+    }
+    return getTimeInMinutes(a.time) - getTimeInMinutes(b.time);
+  });
+
   const pendingCount = todayMeds.filter(m => m.statusToday === 'pending').length;
 
   const handleShareCode = async () => {
@@ -56,6 +86,22 @@ export const PatientHomeScreen = ({ onNavigateMedicines }) => {
       });
     } catch (e) {
       Alert.alert('Your Code', currentUser.pairingCode);
+    }
+  };
+
+  const handleTestAlarmNotification = async () => {
+    const scheduled = await scheduleTestAlarmNotification(5);
+    if (scheduled) {
+      Alert.alert(
+        '🔔 Alarm Test Scheduled (5s)',
+        'MedCompanion scheduled a test alarm notification in 5 seconds.\n\n👉 Minimize the app or lock your screen now. It will appear at the top in your Android notification shade!',
+        [{ text: 'OK, Testing Now' }]
+      );
+    } else {
+      Alert.alert(
+        'Notification Notice',
+        'Could not trigger system notification. Please ensure notification permissions are allowed for Expo Go in Android Settings.'
+      );
     }
   };
 
@@ -113,14 +159,25 @@ export const PatientHomeScreen = ({ onNavigateMedicines }) => {
           </Text>
         </View>
 
-        <TouchableOpacity 
-          style={styles.headerAddBtn}
-          onPress={() => setAddModalVisible(true)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={18} color="#0D9488" />
-          <Text style={styles.headerAddBtnText}>Add</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <TouchableOpacity 
+            style={styles.headerTestBtn}
+            onPress={handleTestAlarmNotification}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="notifications-outline" size={15} color="#0284C7" />
+            <Text style={styles.headerTestBtnText}>Test (5s)</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.headerAddBtn}
+            onPress={() => setAddModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={18} color="#0D9488" />
+            <Text style={styles.headerAddBtnText}>Add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Medication Cards List */}
@@ -631,6 +688,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  headerTestBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  headerTestBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0284C7',
   },
   headerAddBtn: {
     flexDirection: 'row',

@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
+
+const ITEM_HEIGHT = 48;
 
 export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }) => {
   const { addMedication, updateMedication } = useApp();
@@ -19,10 +21,15 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
   const [color, setColor] = useState('#3B82F6');
   const [shape, setShape] = useState('circle');
 
+  const hourScrollRef = useRef(null);
+  const minuteScrollRef = useRef(null);
+  const periodScrollRef = useRef(null);
+
   const colorOptions = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'];
   const allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const hoursList = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
-  const minutesList = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
+  const minutesList = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
+  const periodsList = ['am', 'pm'];
 
   const frequencyOptions = [
     { id: 'Daily', label: 'Every Day', icon: 'calendar-outline' },
@@ -54,44 +61,68 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
     return { hour: '08', minute: '00', period: 'AM' };
   };
 
-  const applyTime = (h, m, p) => {
+  const scrollToCurrentTime = (h, m, p, animated = true) => {
+    const hIdx = hoursList.indexOf(h);
+    if (hIdx >= 0) {
+      hourScrollRef.current?.scrollTo({ y: hIdx * ITEM_HEIGHT, animated });
+    }
+    const mIdx = minutesList.indexOf(m);
+    if (mIdx >= 0) {
+      minuteScrollRef.current?.scrollTo({ y: mIdx * ITEM_HEIGHT, animated });
+    }
+    const pIdx = periodsList.findIndex(item => item.toUpperCase() === p.toUpperCase());
+    if (pIdx >= 0) {
+      periodScrollRef.current?.scrollTo({ y: pIdx * ITEM_HEIGHT, animated });
+    }
+  };
+
+  const applyTime = (h, m, p, syncScroll = true) => {
     setSelectedHour(h);
     setSelectedMinute(m);
     setSelectedPeriod(p);
     setTime(`${h}:${m} ${p}`);
-  };
-
-  const togglePeriod = () => {
-    const nextP = selectedPeriod === 'AM' ? 'PM' : 'AM';
-    setSelectedPeriod(nextP);
-    setTime(`${selectedHour}:${selectedMinute} ${nextP}`);
-  };
-
-  const handlePeriodButtonPress = (targetP) => {
-    if (selectedPeriod === targetP) {
-      togglePeriod();
-    } else {
-      setSelectedPeriod(targetP);
-      setTime(`${selectedHour}:${selectedMinute} ${targetP}`);
+    if (syncScroll) {
+      setTimeout(() => scrollToCurrentTime(h, m, p, true), 30);
     }
   };
 
-  const stepHour = (delta) => {
-    let h = parseInt(selectedHour, 10) + delta;
-    if (h > 12) h = 1;
-    if (h < 1) h = 12;
-    const hStr = h.toString().padStart(2, '0');
-    setSelectedHour(hStr);
-    setTime(`${hStr}:${selectedMinute} ${selectedPeriod}`);
+  const handleScrollEnd = (e, type) => {
+    const y = e.nativeEvent.contentOffset.y;
+    if (type === 'hour') {
+      const idx = Math.max(0, Math.min(hoursList.length - 1, Math.round(y / ITEM_HEIGHT)));
+      const h = hoursList[idx];
+      setSelectedHour(h);
+      setTime(`${h}:${selectedMinute} ${selectedPeriod}`);
+    } else if (type === 'minute') {
+      const idx = Math.max(0, Math.min(minutesList.length - 1, Math.round(y / ITEM_HEIGHT)));
+      const m = minutesList[idx];
+      setSelectedMinute(m);
+      setTime(`${selectedHour}:${m} ${selectedPeriod}`);
+    } else if (type === 'period') {
+      const idx = Math.max(0, Math.min(periodsList.length - 1, Math.round(y / ITEM_HEIGHT)));
+      const p = periodsList[idx].toUpperCase();
+      setSelectedPeriod(p);
+      setTime(`${selectedHour}:${selectedMinute} ${p}`);
+    }
   };
 
-  const stepMinute = (delta) => {
-    let m = parseInt(selectedMinute, 10) + delta;
-    if (m >= 60) m = 0;
-    if (m < 0) m = 59;
-    const mStr = m.toString().padStart(2, '0');
-    setSelectedMinute(mStr);
-    setTime(`${selectedHour}:${mStr} ${selectedPeriod}`);
+  const selectHourItem = (h, idx) => {
+    setSelectedHour(h);
+    setTime(`${h}:${selectedMinute} ${selectedPeriod}`);
+    hourScrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: true });
+  };
+
+  const selectMinuteItem = (m, idx) => {
+    setSelectedMinute(m);
+    setTime(`${selectedHour}:${m} ${selectedPeriod}`);
+    minuteScrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: true });
+  };
+
+  const selectPeriodItem = (p, idx) => {
+    const pUpper = p.toUpperCase();
+    setSelectedPeriod(pUpper);
+    setTime(`${selectedHour}:${selectedMinute} ${pUpper}`);
+    periodScrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: true });
   };
 
   const setTestIn1Min = () => {
@@ -102,7 +133,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
     h = h % 12 || 12;
     const hStr = h.toString().padStart(2, '0');
     const mStr = m.toString().padStart(2, '0');
-    applyTime(hStr, mStr, p);
+    applyTime(hStr, mStr, p, true);
   };
 
   const handlePresetSelect = (preset) => {
@@ -110,32 +141,42 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
       setTestIn1Min();
     } else {
       const parsed = parseTimeString(preset.value);
-      applyTime(parsed.hour, parsed.minute, parsed.period);
+      applyTime(parsed.hour, parsed.minute, parsed.period, true);
     }
   };
 
   useEffect(() => {
-    if (medicationToEdit) {
-      setName(medicationToEdit.name || '');
-      setDosage(medicationToEdit.dosage || '');
-      const parsed = parseTimeString(medicationToEdit.time || '08:00 AM');
-      applyTime(parsed.hour, parsed.minute, parsed.period);
-      setMealCondition(medicationToEdit.mealCondition || 'After Meal');
-      setFrequency(medicationToEdit.frequency || 'Daily');
-      setSelectedDays(medicationToEdit.selectedDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
-      setWeeklyDay(medicationToEdit.weeklyDay || 'Mon');
-      setColor(medicationToEdit.color || '#3B82F6');
-      setShape(medicationToEdit.shape || 'circle');
-    } else {
-      setName('');
-      setDosage('');
-      applyTime('08', '00', 'AM');
-      setMealCondition('After Meal');
-      setFrequency('Daily');
-      setSelectedDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
-      setWeeklyDay('Mon');
-      setColor('#3B82F6');
-      setShape('circle');
+    if (visible) {
+      if (medicationToEdit) {
+        setName(medicationToEdit.name || '');
+        setDosage(medicationToEdit.dosage || '');
+        const parsed = parseTimeString(medicationToEdit.time || '08:00 AM');
+        setSelectedHour(parsed.hour);
+        setSelectedMinute(parsed.minute);
+        setSelectedPeriod(parsed.period);
+        setTime(`${parsed.hour}:${parsed.minute} ${parsed.period}`);
+        setMealCondition(medicationToEdit.mealCondition || 'After Meal');
+        setFrequency(medicationToEdit.frequency || 'Daily');
+        setSelectedDays(medicationToEdit.selectedDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+        setWeeklyDay(medicationToEdit.weeklyDay || 'Mon');
+        setColor(medicationToEdit.color || '#3B82F6');
+        setShape(medicationToEdit.shape || 'circle');
+        setTimeout(() => scrollToCurrentTime(parsed.hour, parsed.minute, parsed.period, false), 120);
+      } else {
+        setName('');
+        setDosage('');
+        setSelectedHour('08');
+        setSelectedMinute('00');
+        setSelectedPeriod('AM');
+        setTime('08:00 AM');
+        setMealCondition('After Meal');
+        setFrequency('Daily');
+        setSelectedDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+        setWeeklyDay('Mon');
+        setColor('#3B82F6');
+        setShape('circle');
+        setTimeout(() => scrollToCurrentTime('08', '00', 'AM', false), 120);
+      }
     }
   }, [medicationToEdit, visible]);
 
@@ -293,152 +334,124 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
               </View>
             )}
 
-            {/* ALARM TIME WHEEL / NUMBER PICKER SECTION */}
+            {/* ALARM TIME VERTICAL WHEEL DRUM PICKER (MATCHING NATIVE MOBILE ALARM) */}
             <View style={styles.timeSectionBox}>
               <View style={styles.timeSectionHeaderRow}>
-                <Ionicons name="time" size={18} color="#0D9488" />
+                <Ionicons name="alarm-outline" size={18} color="#0D9488" />
                 <Text style={styles.timeSectionTitle}>Alarm Time</Text>
               </View>
 
-              {/* Digital Clock Banner with interactive elements */}
-              <View style={styles.digitalClockCard}>
-                <View style={styles.digitalDisplayRow}>
-                  {/* Hour Box & Up/Down Stepper */}
-                  <View style={styles.digitalNumBox}>
-                    <TouchableOpacity style={styles.stepperArrow} onPress={() => stepHour(1)} activeOpacity={0.7}>
-                      <Ionicons name="chevron-up" size={20} color="#0D9488" />
-                    </TouchableOpacity>
-                    <Text style={styles.digitalNumText}>{selectedHour}</Text>
-                    <TouchableOpacity style={styles.stepperArrow} onPress={() => stepHour(-1)} activeOpacity={0.7}>
-                      <Ionicons name="chevron-down" size={20} color="#0D9488" />
-                    </TouchableOpacity>
-                    <Text style={styles.digitalUnitLabel}>HOUR</Text>
-                  </View>
+              {/* Native Mobile Dark Drum Wheel (Hours : Minutes am/pm) */}
+              <View style={styles.wheelDrumCard}>
+                {/* Horizontal Center Highlight Overlay */}
+                <View style={styles.wheelCenterHighlight} />
 
-                  <Text style={styles.digitalColon}>:</Text>
-
-                  {/* Minute Box & Up/Down Stepper */}
-                  <View style={styles.digitalNumBox}>
-                    <TouchableOpacity style={styles.stepperArrow} onPress={() => stepMinute(1)} activeOpacity={0.7}>
-                      <Ionicons name="chevron-up" size={20} color="#0D9488" />
-                    </TouchableOpacity>
-                    <Text style={styles.digitalNumText}>{selectedMinute}</Text>
-                    <TouchableOpacity style={styles.stepperArrow} onPress={() => stepMinute(-1)} activeOpacity={0.7}>
-                      <Ionicons name="chevron-down" size={20} color="#0D9488" />
-                    </TouchableOpacity>
-                    <Text style={styles.digitalUnitLabel}>MIN</Text>
-                  </View>
-
-                  {/* AM/PM Pill: Tap directly to flip AM <-> PM */}
-                  <TouchableOpacity 
-                    style={[
-                      styles.periodTogglePill, 
-                      selectedPeriod === 'PM' ? styles.periodTogglePillPM : styles.periodTogglePillAM
-                    ]}
-                    onPress={togglePeriod}
-                    activeOpacity={0.8}
+                {/* 1. Hour Drum */}
+                <View style={styles.wheelColumnContainer}>
+                  <ScrollView
+                    ref={hourScrollRef}
+                    showsVerticalScrollIndicator={false}
+                    snapToInterval={ITEM_HEIGHT}
+                    snapToAlignment="center"
+                    decelerationRate="fast"
+                    onMomentumScrollEnd={(e) => handleScrollEnd(e, 'hour')}
+                    onScrollEndDrag={(e) => handleScrollEnd(e, 'hour')}
+                    contentContainerStyle={styles.wheelScrollContent}
                   >
-                    <Ionicons 
-                      name={selectedPeriod === 'AM' ? 'sunny' : 'moon'} 
-                      size={20} 
-                      color="#FFFFFF" 
-                    />
-                    <Text style={styles.periodToggleText}>{selectedPeriod}</Text>
-                    <Text style={styles.periodFlipHint}>Tap to flip</Text>
-                  </TouchableOpacity>
+                    {hoursList.map((h, idx) => {
+                      const isSelected = selectedHour === h;
+                      return (
+                        <TouchableOpacity
+                          key={h}
+                          style={styles.wheelItem}
+                          onPress={() => selectHourItem(h, idx)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.wheelItemText, isSelected && styles.wheelItemTextActive]}>
+                            {parseInt(h, 10)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
 
-                {/* AM / PM Select Buttons */}
-                <View style={styles.ampmButtonsRow}>
-                  <TouchableOpacity
-                    style={[styles.ampmBtn, selectedPeriod === 'AM' && styles.ampmBtnActive]}
-                    onPress={() => handlePeriodButtonPress('AM')}
-                  >
-                    <Ionicons 
-                      name="sunny" 
-                      size={15} 
-                      color={selectedPeriod === 'AM' ? '#FFFFFF' : '#64748B'} 
-                    />
-                    <Text style={[styles.ampmBtnText, selectedPeriod === 'AM' && styles.ampmBtnTextActive]}>
-                      AM (Morning)
-                    </Text>
-                  </TouchableOpacity>
+                {/* Center Colon Separator */}
+                <Text style={styles.wheelColon}>:</Text>
 
-                  <TouchableOpacity
-                    style={[styles.ampmBtn, selectedPeriod === 'PM' && styles.ampmBtnActive]}
-                    onPress={() => handlePeriodButtonPress('PM')}
+                {/* 2. Minute Drum */}
+                <View style={styles.wheelColumnContainer}>
+                  <ScrollView
+                    ref={minuteScrollRef}
+                    showsVerticalScrollIndicator={false}
+                    snapToInterval={ITEM_HEIGHT}
+                    snapToAlignment="center"
+                    decelerationRate="fast"
+                    onMomentumScrollEnd={(e) => handleScrollEnd(e, 'minute')}
+                    onScrollEndDrag={(e) => handleScrollEnd(e, 'minute')}
+                    contentContainerStyle={styles.wheelScrollContent}
                   >
-                    <Ionicons 
-                      name="moon" 
-                      size={15} 
-                      color={selectedPeriod === 'PM' ? '#FFFFFF' : '#64748B'} 
-                    />
-                    <Text style={[styles.ampmBtnText, selectedPeriod === 'PM' && styles.ampmBtnTextActive]}>
-                      PM (Evening/Night)
-                    </Text>
-                  </TouchableOpacity>
+                    {minutesList.map((m, idx) => {
+                      const isSelected = selectedMinute === m;
+                      return (
+                        <TouchableOpacity
+                          key={m}
+                          style={styles.wheelItem}
+                          onPress={() => selectMinuteItem(m, idx)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.wheelItemText, isSelected && styles.wheelItemTextActive]}>
+                            {m}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                {/* 3. AM / PM Drum */}
+                <View style={styles.wheelColumnContainer}>
+                  <ScrollView
+                    ref={periodScrollRef}
+                    showsVerticalScrollIndicator={false}
+                    snapToInterval={ITEM_HEIGHT}
+                    snapToAlignment="center"
+                    decelerationRate="fast"
+                    onMomentumScrollEnd={(e) => handleScrollEnd(e, 'period')}
+                    onScrollEndDrag={(e) => handleScrollEnd(e, 'period')}
+                    contentContainerStyle={styles.wheelScrollContent}
+                  >
+                    {periodsList.map((p, idx) => {
+                      const isSelected = selectedPeriod.toUpperCase() === p.toUpperCase();
+                      return (
+                        <TouchableOpacity
+                          key={p}
+                          style={styles.wheelItem}
+                          onPress={() => selectPeriodItem(p, idx)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.wheelPeriodText, isSelected && styles.wheelPeriodTextActive]}>
+                            {p}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
               </View>
 
-              {/* Scrollable Hours Number Strip (1 to 12) */}
-              <View style={styles.numberStripBox}>
-                <Text style={styles.numberStripLabel}>Hour (Scroll & Tap):</Text>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.numberStripScroll}
-                >
-                  {hoursList.map((h) => {
-                    const isSelected = selectedHour === h;
-                    return (
-                      <TouchableOpacity
-                        key={h}
-                        style={[styles.numberChip, isSelected && styles.numberChipActive]}
-                        onPress={() => {
-                          setSelectedHour(h);
-                          setTime(`${h}:${selectedMinute} ${selectedPeriod}`);
-                        }}
-                      >
-                        <Text style={[styles.numberChipText, isSelected && styles.numberChipTextActive]}>
-                          {h}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-
-              {/* Scrollable Minutes Number Strip (00 to 55) */}
-              <View style={styles.numberStripBox}>
-                <Text style={styles.numberStripLabel}>Minute (Scroll & Tap):</Text>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.numberStripScroll}
-                >
-                  {minutesList.map((m) => {
-                    const isSelected = selectedMinute === m;
-                    return (
-                      <TouchableOpacity
-                        key={m}
-                        style={[styles.numberChip, isSelected && styles.numberChipActive]}
-                        onPress={() => {
-                          setSelectedMinute(m);
-                          setTime(`${selectedHour}:${m} ${selectedPeriod}`);
-                        }}
-                      >
-                        <Text style={[styles.numberChipText, isSelected && styles.numberChipTextActive]}>
-                          {m}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-
-              {/* Quick Presets */}
+              {/* Quick Presets row including "⚡ Test in 1 Min" */}
               <View style={styles.presetsRow}>
-                {timePresets.map((preset) => (
+                <TouchableOpacity
+                  style={styles.testQuickBtn}
+                  onPress={setTestIn1Min}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="flash" size={14} color="#0D9488" />
+                  <Text style={styles.testQuickBtnText}>Test in 1 Min</Text>
+                </TouchableOpacity>
+
+                {timePresets.filter(p => p.value !== 'In 1 Minute').map((preset) => (
                   <TouchableOpacity
                     key={preset.value}
                     style={[
@@ -794,143 +807,88 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
   },
-  digitalClockCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  digitalDisplayRow: {
+  wheelDrumCard: {
+    backgroundColor: '#0A0F1D',
+    borderRadius: 20,
+    height: 144, // ITEM_HEIGHT * 3 (shows 3 rows: upper dimmed, center active, lower dimmed)
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 6,
+    position: 'relative',
+    overflow: 'hidden',
+    paddingHorizontal: 16,
+    marginVertical: 4,
   },
-  digitalNumBox: {
-    alignItems: 'center',
-    minWidth: 54,
-  },
-  stepperArrow: {
-    padding: 4,
-  },
-  digitalNumText: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: '#0F172A',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 1,
-  },
-  digitalUnitLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  digitalColon: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#0D9488',
-    marginBottom: 10,
-  },
-  periodTogglePill: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  wheelCenterHighlight: {
+    position: 'absolute',
+    top: 48, // ITEM_HEIGHT
+    left: 12,
+    right: 12,
+    height: 48, // ITEM_HEIGHT
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 12,
-    marginLeft: 6,
-    minWidth: 70,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    pointerEvents: 'none',
   },
-  periodTogglePillAM: {
-    backgroundColor: '#0D9488',
+  wheelColumnContainer: {
+    flex: 1,
+    height: 144,
   },
-  periodTogglePillPM: {
-    backgroundColor: '#6366F1',
+  wheelScrollContent: {
+    paddingVertical: 48, // ITEM_HEIGHT padding so first and last items snap perfectly to center
+    alignItems: 'center',
   },
-  periodToggleText: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    marginTop: 2,
-  },
-  periodFlipHint: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: '#F1F5F9',
-    marginTop: 1,
-  },
-  ampmButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
+  wheelItem: {
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
     width: '100%',
   },
-  ampmBtn: {
-    flex: 1,
+  wheelItemText: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  wheelItemTextActive: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
+  },
+  wheelColon: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginHorizontal: 4,
+    lineHeight: 48,
+  },
+  wheelPeriodText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#475569',
+    textTransform: 'lowercase',
+  },
+  wheelPeriodTextActive: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textTransform: 'lowercase',
+  },
+  testQuickBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
+    gap: 4,
+    backgroundColor: '#F0FDFA',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  ampmBtnActive: {
-    backgroundColor: '#0D9488',
     borderColor: '#0D9488',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
   },
-  ampmBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  ampmBtnTextActive: {
-    color: '#FFFFFF',
-  },
-  numberStripBox: {
-    marginTop: 12,
-  },
-  numberStripLabel: {
+  testQuickBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#475569',
-    marginBottom: 6,
-  },
-  numberStripScroll: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 4,
-  },
-  numberChip: {
-    width: 44,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  numberChipActive: {
-    backgroundColor: '#0D9488',
-    borderColor: '#0D9488',
-  },
-  numberChipText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  numberChipTextActive: {
-    color: '#FFFFFF',
+    color: '#0D9488',
   },
 });

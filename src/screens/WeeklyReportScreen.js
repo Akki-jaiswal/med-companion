@@ -8,13 +8,17 @@ export const WeeklyReportScreen = ({ onBack }) => {
   const { patients, selectedPatientId, medications, adherenceHistory, currentUser } = useApp();
 
   const currentPatient = patients.find(p => p.id === selectedPatientId) || patients[0] || (currentUser?.roles?.includes('PATIENT') ? {
+    id: currentUser.id,
     name: currentUser.name,
     code: currentUser.pairingCode,
     phone: currentUser.phone,
+    emergencyPhone: currentUser.emergencyCaretakerPhone,
     age: currentUser.age || null,
   } : null);
 
-  const patientMeds = currentPatient ? medications.filter(m => !m.patientId || m.patientId === currentPatient.id) : medications;
+  const patientMeds = currentPatient 
+    ? medications.filter(m => m.patientId === currentPatient.id || m.patientId === currentUser?.id || m.patientId === 'self')
+    : [];
 
   const totalDoses = adherenceHistory.length;
   const takenDoses = adherenceHistory.filter(h => h.status === 'Taken').length;
@@ -22,15 +26,16 @@ export const WeeklyReportScreen = ({ onBack }) => {
   const rate = totalDoses > 0 ? Math.round((takenDoses / totalDoses) * 100) : 100;
 
   const handleExportPDF = () => {
-    if (!currentPatient && patientMeds.length === 0) {
-      alert('No patient data available to generate a report. Add a medicine or link a patient first.');
+    if (!currentPatient && patientMeds.length === 0 && adherenceHistory.length === 0) {
+      alert('No patient data or prescription records available to generate a report. Add a medicine first.');
       return;
     }
-    const reportPatient = currentPatient || {
-      name: currentUser?.name || 'Patient',
-      code: currentUser?.pairingCode || 'N/A',
-      phone: currentUser?.phone || 'N/A',
-      age: currentUser?.age || null,
+    const reportPatient = {
+      name: currentPatient?.name || currentUser?.name || 'Patient',
+      code: currentPatient?.code || currentUser?.pairingCode || 'N/A',
+      phone: currentPatient?.phone || currentUser?.phone || 'Not Specified',
+      emergencyPhone: currentPatient?.emergencyPhone || currentUser?.emergencyCaretakerPhone || 'Not Specified',
+      age: currentPatient?.age || currentUser?.age || null,
     };
     generateAndShareAdherenceReport(reportPatient, patientMeds, adherenceHistory);
   };

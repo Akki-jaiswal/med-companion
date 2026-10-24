@@ -67,10 +67,22 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
             color: #64748B;
             text-transform: uppercase;
           }
+          @page {
+            margin: 14mm 12mm 18mm 12mm;
+            size: A4 portrait;
+          }
           table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            page-break-inside: auto;
+          }
+          thead {
+            display: table-header-group;
+          }
+          tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
           }
           th {
             background-color: #0D9488;
@@ -99,12 +111,13 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
             font-weight: bold;
           }
           .footer {
-            margin-top: 40px;
+            margin-top: 50px;
             text-align: center;
             font-size: 11px;
             color: #94A3B8;
             border-top: 1px solid #E2E8F0;
             padding-top: 15px;
+            page-break-inside: avoid;
           }
         </style>
       </head>
@@ -118,12 +131,13 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
           <div>
             <strong>Patient Name:</strong> ${patient ? patient.name : 'Patient'}<br>
             <strong>Patient ID:</strong> ${patient?.code ? patient.code : 'N/A'}<br>
-            <strong>Age:</strong> ${patient?.age ? `${patient.age} Years` : 'Not Specified'}
+            <strong>Age:</strong> ${patient?.age ? `${patient.age} Years` : 'Not Specified'}<br>
+            <strong>Contact:</strong> ${patient?.phone ? patient.phone : 'Not Specified'}
           </div>
           <div style="text-align: right;">
             <strong>Generated Date:</strong> ${new Date().toLocaleDateString()}<br>
             <strong>Report Type:</strong> 7-Day Adherence Audit<br>
-            <strong>Emergency Contact:</strong> ${patient?.phone ? patient.phone : 'Not Specified'}
+            <strong>Emergency Contact:</strong> ${patient?.emergencyPhone ? patient.emergencyPhone : 'Not Specified'}
           </div>
         </div>
 
@@ -153,14 +167,18 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
             </tr>
           </thead>
           <tbody>
-            ${medications.map(m => `
+            ${medications.length > 0 ? medications.map(m => `
               <tr>
                 <td><strong>${m.name}</strong></td>
                 <td>${m.dosage}</td>
                 <td>${m.time}</td>
-                <td>${m.mealCondition}</td>
+                <td>${m.mealCondition || 'As prescribed'}</td>
               </tr>
-            `).join('')}
+            `).join('') : `
+              <tr>
+                <td colspan="4" style="text-align: center; color: #94A3B8; padding: 12px;">No active prescriptions scheduled for this patient.</td>
+              </tr>
+            `}
           </tbody>
         </table>
 
@@ -175,7 +193,7 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
             </tr>
           </thead>
           <tbody>
-            ${history.map(h => `
+            ${history.length > 0 ? history.map(h => `
               <tr>
                 <td>${h.date}</td>
                 <td>${h.pillName}</td>
@@ -186,12 +204,16 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
                   </span>
                 </td>
               </tr>
-            `).join('')}
+            `).join('') : `
+              <tr>
+                <td colspan="4" style="text-align: center; color: #94A3B8; padding: 12px;">No adherence records logged yet for this patient.</td>
+              </tr>
+            `}
           </tbody>
         </table>
 
         <div class="footer">
-          Generated automatically by MedCompanion Mobile App (MAD Lab Project). Verified for Doctor & Family Review.
+          Generated automatically by MedCompanion App. All rights reserved.
         </div>
       </body>
     </html>

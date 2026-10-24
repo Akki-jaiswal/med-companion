@@ -235,20 +235,35 @@ export const AppProvider = ({ children }) => {
           }
 
           // Load user-scoped patients
-          const savedPatients = await AsyncStorage.getItem(`@patients_${userToLoad.id}`) || await AsyncStorage.getItem('@patients');
+          const savedPatients = await AsyncStorage.getItem(`@patients_${userToLoad.id}`);
           if (savedPatients) {
             const parsed = JSON.parse(savedPatients);
             setPatients(parsed);
             if (parsed.length > 0) setSelectedPatientId(parsed[0].id);
+          } else if (userToLoad.roles?.includes('PATIENT')) {
+            const pSelf = {
+              id: userToLoad.id,
+              name: userToLoad.name,
+              age: userToLoad.age || null,
+              code: userToLoad.pairingCode,
+              phone: userToLoad.phone,
+              emergencyPhone: userToLoad.emergencyCaretakerPhone,
+              relation: 'Self',
+            };
+            setPatients([pSelf]);
+            setSelectedPatientId(userToLoad.id);
+          } else {
+            setPatients([]);
+            setSelectedPatientId(null);
           }
 
-          // Load user-scoped medications
-          const savedMeds = await AsyncStorage.getItem(`@medications_${userToLoad.id}`) || await AsyncStorage.getItem('@medications');
-          if (savedMeds) setMedications(JSON.parse(savedMeds));
+          // Load user-scoped medications (STRICTLY user-scoped, never leak from other accounts!)
+          const savedMeds = await AsyncStorage.getItem(`@medications_${userToLoad.id}`);
+          setMedications(savedMeds ? JSON.parse(savedMeds) : []);
 
-          // Load user-scoped adherence history
-          const userHistoryStr = await AsyncStorage.getItem(`@adherence_history_${userToLoad.id}`) || await AsyncStorage.getItem('@adherence_history');
-          if (userHistoryStr) setAdherenceHistory(JSON.parse(userHistoryStr));
+          // Load user-scoped adherence history (STRICTLY user-scoped, never leak from other accounts!)
+          const userHistoryStr = await AsyncStorage.getItem(`@adherence_history_${userToLoad.id}`);
+          setAdherenceHistory(userHistoryStr ? JSON.parse(userHistoryStr) : []);
         } else {
           // No user is logged in
           setCurrentUser(null);
@@ -391,6 +406,20 @@ export const AppProvider = ({ children }) => {
     if (newUser.emergencyCaretakerPhone) {
       setCaretakerPhone(newUser.emergencyCaretakerPhone);
     }
+
+    // STRICT MULTI-ACCOUNT ISOLATION:
+    // Brand new registered accounts start with ZERO medications and empty adherence history!
+    setMedications([]);
+    setAdherenceHistory([]);
+    setActiveAlarmMeds([]);
+    setEscalationAlert(null);
+    firedAlarmIdsRef.current.clear();
+    pendingEscalationsRef.current = {};
+
+    await AsyncStorage.setItem(`@medications_${newUser.id}`, JSON.stringify([]));
+    await AsyncStorage.setItem(`@adherence_history_${newUser.id}`, JSON.stringify([]));
+    await AsyncStorage.setItem('@medications', JSON.stringify([]));
+    await AsyncStorage.setItem('@adherence_history', JSON.stringify([]));
 
     // 1. Permanently store in Registered Users Map
     usersMap[emailKey] = newUser;
