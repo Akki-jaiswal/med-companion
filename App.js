@@ -26,12 +26,16 @@ const MainNavigator = () => {
   // Enforce Android Sticky-Immersive Mode (hides the 3-button navigation bar ||| O < automatically)
   useEffect(() => {
     const applyStickyImmersive = async () => {
-      if (Platform.OS === 'android') {
+      if (Platform.OS === 'android' && NavigationBar) {
         try {
-          await NavigationBar.setVisibilityAsync('hidden');
-          await NavigationBar.setBehaviorAsync('overlay-swipe');
+          if (typeof NavigationBar.setVisibilityAsync === 'function') {
+            await NavigationBar.setVisibilityAsync('hidden');
+          }
+          if (typeof NavigationBar.setBehaviorAsync === 'function') {
+            await NavigationBar.setBehaviorAsync('overlay-swipe');
+          }
         } catch (e) {
-          console.log('NavigationBar note:', e.message);
+          // Silent fallback if device doesn't support soft navbar manipulation
         }
       }
     };

@@ -24,6 +24,13 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null }
   const hoursList = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
   const minutesList = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
 
+  const frequencyOptions = [
+    { id: 'Daily', label: 'Every Day', icon: 'calendar-outline' },
+    { id: 'Specific Days', label: 'Specific Days', icon: 'checkbox-outline' },
+    { id: 'Weekly', label: 'Weekly', icon: 'repeat-outline' },
+    { id: 'Alternate Days', label: 'Alternate Days', icon: 'swap-horizontal-outline' },
+  ];
+
   const timePresets = [
     { label: '⚡ Test in 1 Min', value: 'In 1 Minute' },
     { label: '🌅 Morning (08:00 AM)', value: '08:00 AM' },
