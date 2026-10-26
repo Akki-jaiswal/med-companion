@@ -10,6 +10,8 @@ let requestPermissionsAsync = null;
 let cancelScheduledNotificationAsync = null;
 let addNotificationResponseReceivedListener = null;
 let addNotificationReceivedListenerFn = null;
+let setNotificationCategoryAsync = null;
+let getLastNotificationResponseAsync = null;
 
 try {
   Notifications = require('expo-notifications');
@@ -23,6 +25,8 @@ try {
     cancelScheduledNotificationAsync = nMod.cancelScheduledNotificationAsync;
     addNotificationResponseReceivedListener = nMod.addNotificationResponseReceivedListener;
     addNotificationReceivedListenerFn = nMod.addNotificationReceivedListener;
+    setNotificationCategoryAsync = nMod.setNotificationCategoryAsync;
+    getLastNotificationResponseAsync = nMod.getLastNotificationResponseAsync;
   }
 } catch (e) {
   console.log('Top-level expo-notifications note:', e.message);
@@ -72,6 +76,18 @@ if (!addNotificationResponseReceivedListener || !addNotificationReceivedListener
     }
   } catch (e) {}
 }
+if (!setNotificationCategoryAsync) {
+  try {
+    const m = require('expo-notifications/build/setNotificationCategoryAsync');
+    setNotificationCategoryAsync = m?.default || m?.setNotificationCategoryAsync || m;
+  } catch (e) {}
+}
+if (!getLastNotificationResponseAsync) {
+  try {
+    const m = require('expo-notifications/build/getLastNotificationResponseAsync');
+    getLastNotificationResponseAsync = m?.default || m?.getLastNotificationResponseAsync || m;
+  } catch (e) {}
+}
 
 // Configure notification handler so foreground notifications pop up and chime
 if (setNotificationHandler) {
@@ -111,17 +127,48 @@ export const registerForPushNotificationsAsync = async () => {
       const highImp = Notifications?.AndroidImportance?.HIGH ?? ANDROID_IMPORTANCE_HIGH;
       const visPublic = Notifications?.AndroidNotificationVisibility?.PUBLIC ?? ANDROID_VISIBILITY_PUBLIC;
 
-      // 1. Android System Urgent Alarm Channel (High priority + Sound + Strong Vibration)
+      // 1. Android System Urgent Alarm Channel (High priority + Sound + Strong Vibration + USAGE_ALARM stream)
       await setNotificationChannelAsync('medication-alarms', {
         name: 'Urgent Medication Alarms',
         importance: maxImp,
-        vibrationPattern: [0, 600, 400, 600, 400, 600],
+        vibrationPattern: [0, 800, 400, 800, 400, 800, 400, 1000],
         sound: 'default',
         enableVibrate: true,
         showBadge: true,
+        bypassDnd: true,
         lockscreenVisibility: visPublic,
+        audioAttributes: {
+          usage: 4, // Android AudioAttributes.USAGE_ALARM
+          contentType: 4, // Android AudioAttributes.CONTENT_TYPE_SONIFICATION
+          flags: { enforceAudibility: true }
+        },
         lightColor: '#DC2626',
       });
+
+      // Register interactive notification action buttons for alarm popups
+      if (setNotificationCategoryAsync) {
+        try {
+          await setNotificationCategoryAsync('medication_alarm', [
+            {
+              identifier: 'TAKE_ACTION',
+              buttonTitle: '✓ Take Medicine',
+              options: { opensAppToForeground: true },
+            },
+            {
+              identifier: 'SNOOZE_ACTION',
+              buttonTitle: '⏰ Snooze 5 Min',
+              options: { opensAppToForeground: false },
+            },
+            {
+              identifier: 'OPEN_ACTION',
+              buttonTitle: '🔔 Open Alarm',
+              options: { opensAppToForeground: true },
+            },
+          ]);
+        } catch (catErr) {
+          console.log('Category setup note:', catErr.message);
+        }
+      }
 
       // 2. Upcoming 10-Minute Pre-Alarm Channel (Notifies before pill time)
       await setNotificationChannelAsync('medication-reminders', {
@@ -165,6 +212,9 @@ export const fireInstantMedicationNotification = async (medOrMeds) => {
         sound: 'default',
         priority: 'max',
         channelId: 'medication-alarms',
+        categoryIdentifier: 'medication_alarm',
+        sticky: true,
+        autoDismiss: false,
         data: { medIds: medsArray.map(m => m.id), type: 'medication_alarm' },
       },
       trigger: null, // Fires immediately!
@@ -235,6 +285,9 @@ export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
         sound: 'default',
         priority: 'max',
         channelId: 'medication-alarms',
+        categoryIdentifier: 'medication_alarm',
+        sticky: true,
+        autoDismiss: false,
         data: { medIds: medsArray.map(m => m.id), type: 'medication_alarm' },
       },
       trigger: {
@@ -389,4 +442,17 @@ export const addNotificationReceivedListener = (callback) => {
     console.log('addNotificationReceivedListener note:', e.message);
   }
   return { remove: () => {} };
+};
+
+// Check if app was cold-launched from user clicking a notification
+export const getLastNotificationResponse = async () => {
+  try {
+    if (typeof getLastNotificationResponseAsync === 'function') {
+      return await getLastNotificationResponseAsync();
+    }
+    return null;
+  } catch (e) {
+    console.log('getLastNotificationResponse note:', e.message);
+    return null;
+  }
 };

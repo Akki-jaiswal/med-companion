@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Animated, AppState, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Animated, AppState, ScrollView, Vibration } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { speakMedicationReminder, stopSpeech } from '../services/voiceService';
@@ -18,8 +18,9 @@ export const AlarmModal = () => {
 
   const [pulseAnim] = useState(new Animated.Value(1));
   const [isSpeaking, setIsSpeaking] = useState(true);
+  const [escalated, setEscalated] = useState(false);
   
-  // 60-second countdown based on actual timestamp (will NEVER freeze in background!)
+  // Active countdown timer for patient interaction
   const [secondsRemaining, setSecondsRemaining] = useState(60);
   const timerRef = useRef(null);
   const deadlineRef = useRef(null);
@@ -37,9 +38,10 @@ export const AlarmModal = () => {
   // Alarm appearance effect (STRICTLY for Patient mode)
   useEffect(() => {
     if (isVisible) {
-      // Set fixed 60-second deadline from now
+      // Set 60-second interactive countdown window
       deadlineRef.current = Date.now() + 60 * 1000;
       setSecondsRemaining(60);
+      setEscalated(false);
 
       // Start pulsing animation
       Animated.loop(
@@ -57,9 +59,12 @@ export const AlarmModal = () => {
         ])
       ).start();
 
-      // Speak Reminder out loud (handles multi-pill combo instructions automatically)
-      speakMedicationReminder(currentMeds, patientName);
+      // Start continuous looping speech and phone vibration like a real alarm
+      speakMedicationReminder(currentMeds, patientName, true);
       setIsSpeaking(true);
+      try {
+        Vibration.vibrate([1000, 500, 1000, 500], true);
+      } catch (e) {}
 
       // Ticking timer computing from real-time deadline
       timerRef.current = setInterval(() => {
@@ -69,42 +74,53 @@ export const AlarmModal = () => {
       }, 500);
     } else {
       stopSpeech();
+      try {
+        Vibration.cancel();
+      } catch (e) {}
       if (timerRef.current) clearInterval(timerRef.current);
     }
 
     return () => {
       stopSpeech();
+      try {
+        Vibration.cancel();
+      } catch (e) {}
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isVisible, currentMeds.length]);
 
-  // AppState listener: catches countdown immediately when returning from background!
+  // AppState listener: when app resumes into foreground, refresh active 60s interactive window
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active' && isVisible && deadlineRef.current) {
-        const diff = Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000));
-        setSecondsRemaining(diff);
+      if (nextAppState === 'active' && isVisible) {
+        // Give patient full interactive response window when opening screen
+        deadlineRef.current = Date.now() + 60 * 1000;
+        setSecondsRemaining(60);
+        speakMedicationReminder(currentMeds, patientName, true);
+        try {
+          Vibration.vibrate([1000, 500, 1000, 500], true);
+        } catch (e) {}
       }
     });
 
     return () => subscription.remove();
-  }, [isVisible]);
+  }, [isVisible, currentMeds.length]);
 
-  // Clean side-effect when countdown finishes (Prevents React parent setState-in-render crash!)
+  // When countdown hits 0, notify caretaker that medication is pending, but DO NOT disappear
   useEffect(() => {
-    if (secondsRemaining === 0 && isVisible) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      stopSpeech();
-      setTimeout(() => {
-        triggerMissedEscalation(currentMeds);
-      }, 50);
+    if (secondsRemaining === 0 && isVisible && !escalated) {
+      setEscalated(true);
+      triggerMissedEscalation(currentMeds);
     }
-  }, [secondsRemaining, isVisible]);
+  }, [secondsRemaining, isVisible, escalated]);
 
   if (!isVisible) return null;
 
   const handleTakeAll = () => {
     stopSpeech();
+    try {
+      Vibration.cancel();
+    } catch (e) {}
     if (timerRef.current) clearInterval(timerRef.current);
     if (markAllAsTaken) {
       markAllAsTaken();
@@ -117,18 +133,27 @@ export const AlarmModal = () => {
     markAsTaken(medId);
     if (currentMeds.length === 1) {
       stopSpeech();
+      try {
+        Vibration.cancel();
+      } catch (e) {}
       if (timerRef.current) clearInterval(timerRef.current);
     }
   };
 
   const handleSnooze = () => {
     stopSpeech();
+    try {
+      Vibration.cancel();
+    } catch (e) {}
     if (timerRef.current) clearInterval(timerRef.current);
     snoozeAlarm();
   };
 
   const handleEscalateNow = () => {
     stopSpeech();
+    try {
+      Vibration.cancel();
+    } catch (e) {}
     if (timerRef.current) clearInterval(timerRef.current);
     triggerMissedEscalation(currentMeds);
   };
@@ -138,7 +163,7 @@ export const AlarmModal = () => {
       stopSpeech();
       setIsSpeaking(false);
     } else {
-      speakMedicationReminder(currentMeds, patientName);
+      speakMedicationReminder(currentMeds, patientName, true);
       setIsSpeaking(true);
     }
   };
