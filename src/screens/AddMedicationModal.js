@@ -295,10 +295,12 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
       return;
     }
 
+    const finalTime = `${hourRef.current}:${minuteRef.current} ${periodRef.current}`;
+
     const payload = {
       name: name.trim(),
       dosage: dosage.trim() || '1 Tablet',
-      time: time.trim() || '08:00 AM',
+      time: finalTime,
       mealCondition,
       frequency,
       selectedDays: frequency === 'Specific Days' ? selectedDays : allDays,
@@ -316,7 +318,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
       Alert.alert('Schedule Updated', `${name} updated successfully!`);
     } else {
       await addMedication(payload);
-      Alert.alert('Prescription Saved', `${name} scheduled for ${time} (${frequency}) and synced!`);
+      Alert.alert('Prescription Saved', `${name} scheduled for ${finalTime} (${frequency}) and synced!`);
     }
 
     onClose();
