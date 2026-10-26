@@ -13,15 +13,16 @@ let addNotificationReceivedListenerFn = null;
 
 try {
   Notifications = require('expo-notifications');
-  if (Notifications) {
-    scheduleNotificationAsync = Notifications.scheduleNotificationAsync;
-    setNotificationHandler = Notifications.setNotificationHandler;
-    setNotificationChannelAsync = Notifications.setNotificationChannelAsync;
-    getPermissionsAsync = Notifications.getPermissionsAsync;
-    requestPermissionsAsync = Notifications.requestPermissionsAsync;
-    cancelScheduledNotificationAsync = Notifications.cancelScheduledNotificationAsync;
-    addNotificationResponseReceivedListener = Notifications.addNotificationResponseReceivedListener;
-    addNotificationReceivedListenerFn = Notifications.addNotificationReceivedListener;
+  const nMod = Notifications?.default || Notifications;
+  if (nMod) {
+    scheduleNotificationAsync = nMod.scheduleNotificationAsync;
+    setNotificationHandler = nMod.setNotificationHandler;
+    setNotificationChannelAsync = nMod.setNotificationChannelAsync;
+    getPermissionsAsync = nMod.getPermissionsAsync;
+    requestPermissionsAsync = nMod.requestPermissionsAsync;
+    cancelScheduledNotificationAsync = nMod.cancelScheduledNotificationAsync;
+    addNotificationResponseReceivedListener = nMod.addNotificationResponseReceivedListener;
+    addNotificationReceivedListenerFn = nMod.addNotificationReceivedListener;
   }
 } catch (e) {
   console.log('Top-level expo-notifications note:', e.message);
@@ -32,40 +33,42 @@ try {
 if (!scheduleNotificationAsync) {
   try {
     const m = require('expo-notifications/build/scheduleNotificationAsync');
-    scheduleNotificationAsync = m.scheduleNotificationAsync;
+    scheduleNotificationAsync = m?.default || m?.scheduleNotificationAsync || m;
   } catch (e) {}
 }
 if (!setNotificationHandler) {
   try {
     const m = require('expo-notifications/build/NotificationsHandler');
-    setNotificationHandler = m.setNotificationHandler;
+    setNotificationHandler = m?.setNotificationHandler || m?.default?.setNotificationHandler || m?.default || m;
   } catch (e) {}
 }
 if (!setNotificationChannelAsync) {
   try {
     const m = require('expo-notifications/build/setNotificationChannelAsync');
-    setNotificationChannelAsync = m.setNotificationChannelAsync;
+    setNotificationChannelAsync = m?.default || m?.setNotificationChannelAsync || m;
   } catch (e) {}
 }
 if (!getPermissionsAsync || !requestPermissionsAsync) {
   try {
     const m = require('expo-notifications/build/NotificationPermissions');
-    getPermissionsAsync = m.getPermissionsAsync;
-    requestPermissionsAsync = m.requestPermissionsAsync;
+    const nPerm = m?.default || m;
+    getPermissionsAsync = getPermissionsAsync || nPerm?.getPermissionsAsync;
+    requestPermissionsAsync = requestPermissionsAsync || nPerm?.requestPermissionsAsync;
   } catch (e) {}
 }
 if (!cancelScheduledNotificationAsync) {
   try {
     const m = require('expo-notifications/build/cancelScheduledNotificationAsync');
-    cancelScheduledNotificationAsync = m.cancelScheduledNotificationAsync;
+    cancelScheduledNotificationAsync = m?.default || m?.cancelScheduledNotificationAsync || m;
   } catch (e) {}
 }
 if (!addNotificationResponseReceivedListener || !addNotificationReceivedListenerFn) {
   try {
     const m = require('expo-notifications/build/NotificationsEmitter');
-    if (m) {
-      addNotificationResponseReceivedListener = addNotificationResponseReceivedListener || m.addNotificationResponseReceivedListener;
-      addNotificationReceivedListenerFn = addNotificationReceivedListenerFn || m.addNotificationReceivedListener;
+    const nEmit = m?.default || m;
+    if (nEmit) {
+      addNotificationResponseReceivedListener = addNotificationResponseReceivedListener || nEmit.addNotificationResponseReceivedListener;
+      addNotificationReceivedListenerFn = addNotificationReceivedListenerFn || nEmit.addNotificationReceivedListener;
     }
   } catch (e) {}
 }
