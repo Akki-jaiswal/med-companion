@@ -14,6 +14,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
   const [selectedHour, setSelectedHour] = useState('08');
   const [selectedMinute, setSelectedMinute] = useState('00');
   const [selectedPeriod, setSelectedPeriod] = useState('AM');
+  const [activePreset, setActivePreset] = useState('morning');
   const [mealCondition, setMealCondition] = useState('After Meal');
   const [frequency, setFrequency] = useState('Daily');
   const [selectedDays, setSelectedDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
@@ -44,10 +45,10 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
   ];
 
   const timePresets = [
-    { label: '⚡ Test in 1 Min', value: 'In 1 Minute' },
-    { label: '🌅 Morning (08:00 AM)', value: '08:00 AM' },
-    { label: '☀️ Afternoon (01:30 PM)', value: '01:30 PM' },
-    { label: '🌙 Night (08:30 PM)', value: '08:30 PM' },
+    { id: '1min', label: '⚡ Test in 1 Min', isTest: true },
+    { id: 'morning', label: '🌅 08:00 AM', hour: '08', minute: '00', period: 'AM' },
+    { id: 'afternoon', label: '☀️ 01:30 PM', hour: '01', minute: '30', period: 'PM' },
+    { id: 'night', label: '🌙 08:00 PM', hour: '08', minute: '00', period: 'PM' },
   ];
 
   const parseTimeString = (tStr) => {
@@ -81,7 +82,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
     }
   };
 
-  const applyTime = (h, m, p, syncScroll = true) => {
+  const applyTime = (h, m, p, presetId = null, syncScroll = true) => {
     hourRef.current = h;
     minuteRef.current = m;
     periodRef.current = p;
@@ -89,6 +90,8 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
     setSelectedMinute(m);
     setSelectedPeriod(p);
     setTime(`${h}:${m} ${p}`);
+    setActivePreset(presetId);
+
     if (syncScroll) {
       if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
       isScrollingProgrammatically.current = true;
@@ -101,6 +104,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
 
   const handleRealtimeScroll = (e, type) => {
     if (isScrollingProgrammatically.current) return;
+    setActivePreset(null);
     const y = e.nativeEvent.contentOffset.y;
     const idx = Math.max(0, Math.round(y / ITEM_HEIGHT));
     if (type === 'hour') {
@@ -132,6 +136,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
 
   const handleScrollEnd = (e, type) => {
     if (isScrollingProgrammatically.current) return;
+    setActivePreset(null);
     const y = e.nativeEvent.contentOffset.y;
     if (type === 'hour') {
       const idx = Math.max(0, Math.min(hoursList.length - 1, Math.round(y / ITEM_HEIGHT)));
@@ -164,6 +169,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
     hourRef.current = h;
     setSelectedHour(h);
     setTime(`${h}:${minuteRef.current} ${periodRef.current}`);
+    setActivePreset(null);
     if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
     isScrollingProgrammatically.current = true;
     hourScrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: true });
@@ -174,6 +180,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
     minuteRef.current = m;
     setSelectedMinute(m);
     setTime(`${hourRef.current}:${m} ${periodRef.current}`);
+    setActivePreset(null);
     if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
     isScrollingProgrammatically.current = true;
     minuteScrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: true });
@@ -185,6 +192,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
     periodRef.current = pUpper;
     setSelectedPeriod(pUpper);
     setTime(`${hourRef.current}:${minuteRef.current} ${pUpper}`);
+    setActivePreset(null);
     if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
     isScrollingProgrammatically.current = true;
     periodScrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: true });
@@ -199,15 +207,14 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
     h = h % 12 || 12;
     const hStr = h.toString().padStart(2, '0');
     const mStr = m.toString().padStart(2, '0');
-    applyTime(hStr, mStr, p, true);
+    applyTime(hStr, mStr, p, '1min', true);
   };
 
   const handlePresetSelect = (preset) => {
-    if (preset.value === 'In 1 Minute') {
+    if (preset.isTest) {
       setTestIn1Min();
     } else {
-      const parsed = parseTimeString(preset.value);
-      applyTime(parsed.hour, parsed.minute, parsed.period, true);
+      applyTime(preset.hour, preset.minute, preset.period, preset.id, true);
     }
   };
 
@@ -224,6 +231,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
         setSelectedMinute(parsed.minute);
         setSelectedPeriod(parsed.period);
         setTime(`${parsed.hour}:${parsed.minute} ${parsed.period}`);
+        setActivePreset(null);
         setMealCondition(medicationToEdit.mealCondition || 'After Meal');
         setFrequency(medicationToEdit.frequency || 'Daily');
         setSelectedDays(medicationToEdit.selectedDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
@@ -249,6 +257,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
         setSelectedMinute('00');
         setSelectedPeriod('AM');
         setTime('08:00 AM');
+        setActivePreset('morning');
         setMealCondition('After Meal');
         setFrequency('Daily');
         setSelectedDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
@@ -538,34 +547,29 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
                 </View>
               </View>
 
-              {/* Quick Presets row including "⚡ Test in 1 Min" */}
+              {/* Quick Presets row including "⚡ Test in 1 Min", "🌅 08:00 AM", "☀️ 01:30 PM", "🌙 08:00 PM" */}
               <View style={styles.presetsRow}>
-                <TouchableOpacity
-                  style={styles.testQuickBtn}
-                  onPress={setTestIn1Min}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="flash" size={13} color="#64748B" />
-                  <Text style={styles.testQuickBtnText}>Test in 1 Min</Text>
-                </TouchableOpacity>
-
-                {timePresets.filter(p => p.value !== 'In 1 Minute').map((preset) => (
-                  <TouchableOpacity
-                    key={preset.value}
-                    style={[
-                      styles.presetBadge, 
-                      time === preset.value && styles.presetBadgeActive
-                    ]}
-                    onPress={() => handlePresetSelect(preset)}
-                  >
-                    <Text style={[
-                      styles.presetText, 
-                      time === preset.value && styles.presetTextActive
-                    ]}>
-                      {preset.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {timePresets.map((preset) => {
+                  const isActive = activePreset === preset.id;
+                  return (
+                    <TouchableOpacity
+                      key={preset.id}
+                      style={[
+                        styles.presetBadge, 
+                        isActive && styles.presetBadgeActive
+                      ]}
+                      onPress={() => handlePresetSelect(preset)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        styles.presetText, 
+                        isActive && styles.presetTextActive
+                      ]}>
+                        {preset.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
@@ -783,11 +787,19 @@ const styles = StyleSheet.create({
   presetBadge: {
     backgroundColor: '#F1F5F9',
     paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   presetBadgeActive: {
     backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
+    shadowColor: '#0D9488',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 2,
   },
   presetText: {
     fontSize: 12,
@@ -796,6 +808,7 @@ const styles = StyleSheet.create({
   },
   presetTextActive: {
     color: '#FFFFFF',
+    fontWeight: '700',
   },
   optionRow: {
     flexDirection: 'row',
