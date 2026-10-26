@@ -24,6 +24,8 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
   const hourScrollRef = useRef(null);
   const minuteScrollRef = useRef(null);
   const periodScrollRef = useRef(null);
+  const isScrollingProgrammatically = useRef(false);
+  const programmaticTimeoutRef = useRef(null);
 
   const colorOptions = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'];
   const allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -82,11 +84,17 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
     setSelectedPeriod(p);
     setTime(`${h}:${m} ${p}`);
     if (syncScroll) {
-      setTimeout(() => scrollToCurrentTime(h, m, p, true), 30);
+      if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+      isScrollingProgrammatically.current = true;
+      scrollToCurrentTime(h, m, p, true);
+      programmaticTimeoutRef.current = setTimeout(() => {
+        isScrollingProgrammatically.current = false;
+      }, 400);
     }
   };
 
   const handleRealtimeScroll = (e, type) => {
+    if (isScrollingProgrammatically.current) return;
     const y = e.nativeEvent.contentOffset.y;
     const idx = Math.max(0, Math.round(y / ITEM_HEIGHT));
     if (type === 'hour') {
@@ -114,6 +122,7 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
   };
 
   const handleScrollEnd = (e, type) => {
+    if (isScrollingProgrammatically.current) return;
     const y = e.nativeEvent.contentOffset.y;
     if (type === 'hour') {
       const idx = Math.max(0, Math.min(hoursList.length - 1, Math.round(y / ITEM_HEIGHT)));
@@ -188,7 +197,15 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
         setWeeklyDay(medicationToEdit.weeklyDay || 'Mon');
         setColor(medicationToEdit.color || '#3B82F6');
         setShape(medicationToEdit.shape || 'circle');
-        setTimeout(() => scrollToCurrentTime(parsed.hour, parsed.minute, parsed.period, false), 120);
+        
+        if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+        isScrollingProgrammatically.current = true;
+        setTimeout(() => {
+          scrollToCurrentTime(parsed.hour, parsed.minute, parsed.period, false);
+          programmaticTimeoutRef.current = setTimeout(() => {
+            isScrollingProgrammatically.current = false;
+          }, 150);
+        }, 100);
       } else {
         setName('');
         setDosage('');
@@ -202,7 +219,15 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
         setWeeklyDay('Mon');
         setColor('#3B82F6');
         setShape('circle');
-        setTimeout(() => scrollToCurrentTime('08', '00', 'AM', false), 120);
+
+        if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+        isScrollingProgrammatically.current = true;
+        setTimeout(() => {
+          scrollToCurrentTime('08', '00', 'AM', false);
+          programmaticTimeoutRef.current = setTimeout(() => {
+            isScrollingProgrammatically.current = false;
+          }, 150);
+        }, 100);
       }
     }
   }, [medicationToEdit, visible]);
