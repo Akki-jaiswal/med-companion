@@ -10,13 +10,15 @@ import {
   cancelScheduledNotification,
   triggerCaretakerPushAlert,
   addNotificationResponseListener,
-  addNotificationReceivedListener
+  addNotificationReceivedListener,
+  getLastNotificationResponse
 } from '../services/notificationService';
 import { sendMissedMedicationSMS } from '../services/emergencyService';
 import {
   subscribeToPatientMedications,
   updateMedicationStatusInCloud,
   addMedicationToCloud,
+  deleteMedicationFromCloud,
   subscribeToEscalationAlerts,
   triggerCloudEscalation,
   findPatientByCodeInCloud,
@@ -116,25 +118,15 @@ export const AppProvider = ({ children }) => {
     };
 
     const dueList = [];
-    const missedList = [];
 
     for (const med of medications) {
       if (med.statusToday === 'pending' && med.targetTimestamp && isMedScheduledToday(med)) {
-        // Case A: User was away from app and >60s passed since scheduled time without acknowledgement
-        if (now >= med.targetTimestamp + 60000 && !firedAlarmIdsRef.current.has(med.id)) {
-          firedAlarmIdsRef.current.add(med.id);
-          missedList.push(med);
-        }
-        // Case B: Alarm time has arrived (within current 60s active countdown window)
-        else if (now >= med.targetTimestamp && !firedAlarmIdsRef.current.has(med.id)) {
+        // If alarm time has arrived or is overdue, trigger alarm modal for patient
+        if (now >= med.targetTimestamp && !firedAlarmIdsRef.current.has(med.id)) {
           firedAlarmIdsRef.current.add(med.id);
           dueList.push(med);
         }
       }
-    }
-
-    if (missedList.length > 0) {
-      triggerMissedEscalation(missedList);
     }
 
     if (dueList.length > 0) {
@@ -147,7 +139,7 @@ export const AppProvider = ({ children }) => {
         fireInstantMedicationNotification(dueList);
       }
 
-      // Schedule background OS notification for Caretaker in 60s in case patient minimizes app
+      // Schedule background OS notification for Caretaker in 120s if patient does not acknowledge
       for (const med of dueList) {
         const owningPatient = patients.find(p => p.id === med.patientId);
         const resolvedPatientName = med.patientName || (userRole === 'PATIENT' ? currentUser?.name : owningPatient?.name) || 'Patient';
@@ -155,7 +147,7 @@ export const AppProvider = ({ children }) => {
           resolvedPatientName,
           med.name,
           med.time,
-          60
+          120
         );
         if (notifId) {
           pendingEscalationsRef.current[med.id] = notifId;
@@ -172,21 +164,43 @@ export const AppProvider = ({ children }) => {
       }
     });
 
-    // When patient taps on the urgent notification in phone status bar, instantly display AlarmModal
+    const handleNotificationAction = (response) => {
+      const data = response?.notification?.request?.content?.data;
+      const actionId = response?.actionIdentifier;
+
+      if (actionId === 'SNOOZE_ACTION') {
+        snoozeAlarm();
+        return;
+      }
+
+      if (data?.medIds && Array.isArray(data.medIds) && userRole === 'PATIENT') {
+        if (actionId === 'TAKE_ACTION') {
+          data.medIds.forEach(id => markAsTaken(id));
+          return;
+        }
+        const matched = medications.filter(m => data.medIds.includes(m.id));
+        if (matched.length > 0) {
+          setActiveAlarmMeds(matched);
+        } else {
+          checkPendingAlarms();
+        }
+      } else {
+        checkPendingAlarms();
+      }
+    };
+
+    // Check if cold-launched by tapping notification
+    if (typeof getLastNotificationResponse === 'function') {
+      getLastNotificationResponse().then((initial) => {
+        if (initial) {
+          handleNotificationAction(initial);
+        }
+      }).catch(() => {});
+    }
+
+    // When patient taps on the urgent notification in phone status bar or taps actions
     const responseSub = typeof addNotificationResponseListener === 'function'
-      ? addNotificationResponseListener((response) => {
-          const data = response?.notification?.request?.content?.data;
-          if (data?.medIds && Array.isArray(data.medIds) && userRole === 'PATIENT') {
-            const matched = medications.filter(m => data.medIds.includes(m.id));
-            if (matched.length > 0) {
-              setActiveAlarmMeds(matched);
-            } else {
-              checkPendingAlarms();
-            }
-          } else {
-            checkPendingAlarms();
-          }
-        })
+      ? addNotificationResponseListener(handleNotificationAction)
       : { remove: () => {} };
 
     const receivedSub = typeof addNotificationReceivedListener === 'function'
@@ -329,11 +343,12 @@ export const AppProvider = ({ children }) => {
 
     // 2. Real-time Firestore sync for this patient's medications
     const unsubscribeMeds = subscribeToPatientMedications(activeTargetId, (cloudMeds) => {
-      if (cloudMeds && cloudMeds.length > 0) {
+      if (Array.isArray(cloudMeds)) {
         setMedications(prev => {
           const others = prev.filter(m => m.patientId !== activeTargetId);
           return [...others, ...cloudMeds];
         });
+        AsyncStorage.setItem(`@patient_medications_${activeTargetId}`, JSON.stringify(cloudMeds)).catch(() => {});
       }
     });
 
@@ -985,8 +1000,11 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Delete medicine
+  // Delete medicine (Real-Time Cloud & Local Sync for Patient + Caretaker)
   const deleteMedication = async (medId) => {
+    const targetMed = medications.find(m => m.id === medId);
+    const targetPatientId = targetMed?.patientId || selectedPatientId || currentUser?.id;
+
     const pendingNotifId = pendingEscalationsRef.current[medId];
     if (pendingNotifId) {
       cancelScheduledNotification(pendingNotifId);
@@ -995,20 +1013,28 @@ export const AppProvider = ({ children }) => {
     firedAlarmIdsRef.current.delete(medId);
     setActiveAlarmMeds(prev => prev.filter(m => m.id !== medId));
 
-    const targetMed = medications.find(m => m.id === medId);
     const updated = medications.filter(m => m.id !== medId);
-    saveMedications(updated);
+    setMedications(updated);
 
-    if (targetMed?.patientId) {
-      try {
+    try {
+      await AsyncStorage.setItem('@medications', JSON.stringify(updated));
+      if (currentUser?.id) {
+        await AsyncStorage.setItem(`@medications_${currentUser.id}`, JSON.stringify(updated));
+      }
+      if (targetPatientId) {
         let pMeds = [];
-        const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${targetMed.patientId}`);
+        const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${targetPatientId}`);
         if (pMedsStr) {
           pMeds = JSON.parse(pMedsStr).filter(m => m.id !== medId);
-          await AsyncStorage.setItem(`@patient_medications_${targetMed.patientId}`, JSON.stringify(pMeds));
         }
-      } catch (e) {}
+        await AsyncStorage.setItem(`@patient_medications_${targetPatientId}`, JSON.stringify(pMeds));
+      }
+    } catch (e) {
+      console.log('Error updating local storage on delete:', e);
     }
+
+    // Permanently remove from Cloud Firestore so both Patient and Caretaker views update immediately!
+    await deleteMedicationFromCloud(medId);
   };
 
   // Add new patient

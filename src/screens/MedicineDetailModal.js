@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { speakMedicationReminder, stopSpeech } from '../services/voiceService';
 
-export const MedicineDetailModal = ({ visible, med, onClose, onMarkTaken }) => {
-  const { currentUser } = useApp();
+export const MedicineDetailModal = ({ visible, med, onClose, onMarkTaken, onDelete }) => {
+  const { currentUser, deleteMedication } = useApp();
   if (!med) return null;
 
   const isTaken = med.statusToday === 'taken';
@@ -14,6 +14,29 @@ export const MedicineDetailModal = ({ visible, med, onClose, onMarkTaken }) => {
   const handleClose = () => {
     stopSpeech();
     onClose();
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Prescription',
+      `Are you sure you want to delete ${med.name}? All scheduled alarms will be removed.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            stopSpeech();
+            if (onDelete) {
+              await onDelete(med.id);
+            } else {
+              await deleteMedication(med.id);
+            }
+            onClose();
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -111,6 +134,15 @@ export const MedicineDetailModal = ({ visible, med, onClose, onMarkTaken }) => {
                 <Text style={styles.completedBadgeText}>Medication Completed for Today</Text>
               </View>
             )}
+
+            {/* Delete Prescription Action */}
+            <TouchableOpacity 
+              style={styles.modalDeleteBtn}
+              onPress={handleDelete}
+            >
+              <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              <Text style={styles.modalDeleteBtnText}>Delete Prescription</Text>
+            </TouchableOpacity>
 
             <View style={{ height: 20 }} />
           </ScrollView>
@@ -306,6 +338,23 @@ const styles = StyleSheet.create({
   completedBadgeText: {
     color: '#166534',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  modalDeleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    marginTop: 12,
+    borderRadius: 14,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    gap: 8,
+  },
+  modalDeleteBtnText: {
+    color: '#EF4444',
+    fontSize: 15,
     fontWeight: '700',
   },
 });

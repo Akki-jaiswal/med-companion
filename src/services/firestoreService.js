@@ -34,7 +34,7 @@ export const subscribeToPatientMedications = (patientId, onUpdate) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const meds = [];
       snapshot.forEach((d) => {
-        meds.push({ id: d.id, ...d.data() });
+        meds.push({ ...d.data(), id: d.data().id || d.id });
       });
       console.log(`[Backend] Synced ${meds.length} medications from Cloud Firestore`);
       onUpdate(meds);
@@ -72,24 +72,56 @@ export const updateMedicationStatusInCloud = async (medId, status, takenAt = nul
 };
 
 /**
- * 3. ADD NEW MEDICATION (From Caretaker)
- * Writes new prescription to Cloud Firestore.
+ * 3. ADD / SAVE MEDICATION (From Caretaker or Patient)
+ * Writes new prescription to Cloud Firestore with deterministic doc ID.
  */
 export const addMedicationToCloud = async (medData) => {
   if (!isFirebaseConfigured() || !db) return null;
 
   try {
-    const docRef = await addDoc(collection(db, 'medications'), {
+    const docId = medData.id || ('m_' + Date.now());
+    const docRef = doc(db, 'medications', docId);
+    await setDoc(docRef, {
       ...medData,
-      statusToday: 'pending',
-      takenAt: null,
-      createdAt: new Date().toISOString(),
+      id: docId,
+      statusToday: medData.statusToday || 'pending',
+      takenAt: medData.takenAt || null,
+      createdAt: medData.createdAt || new Date().toISOString(),
     });
-    console.log(`[Backend] Added new medication ${docRef.id} to Cloud Firestore`);
-    return docRef.id;
+    console.log(`[Backend] Saved medication ${docId} to Cloud Firestore`);
+    return docId;
   } catch (error) {
     console.log('[Backend] Add error:', error.message);
     return null;
+  }
+};
+
+/**
+ * 3B. DELETE MEDICATION FROM CLOUD FIRESTORE
+ * Deletes prescription permanently from Firestore so it vanishes from both Patient & Caretaker devices.
+ */
+export const deleteMedicationFromCloud = async (medId) => {
+  if (!isFirebaseConfigured() || !db || !medId) return false;
+
+  try {
+    // 1. Direct delete using medId as document ID
+    const medRef = doc(db, 'medications', medId);
+    await deleteDoc(medRef).catch(() => {});
+
+    // 2. Also query where 'id' field matches (cleans up any older docs created with auto IDs)
+    const q = query(collection(db, 'medications'), where('id', '==', medId));
+    const snap = await getDocs(q);
+    const delPromises = [];
+    snap.forEach((d) => {
+      delPromises.push(deleteDoc(d.ref).catch(() => {}));
+    });
+    await Promise.all(delPromises);
+
+    console.log(`[Backend] Permanently deleted medication ${medId} from Cloud Firestore`);
+    return true;
+  } catch (error) {
+    console.log('[Backend] Delete medication cloud error:', error.message);
+    return false;
   }
 };
 

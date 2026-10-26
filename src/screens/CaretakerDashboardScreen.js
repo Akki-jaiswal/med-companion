@@ -12,6 +12,7 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
     selectedPatientId, 
     setSelectedPatientId, 
     medications,
+    deleteMedication,
     escalationAlert,
     setEscalationAlert,
     adherenceHistory,
@@ -23,6 +24,24 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
 
   const currentPatient = patients.find(p => p.id === selectedPatientId) || patients[0];
   const patientMeds = currentPatient ? medications.filter(m => m.patientId === currentPatient.id) : [];
+
+  const handleDeleteMed = (med) => {
+    Alert.alert(
+      'Delete Prescription',
+      `Are you sure you want to delete ${med.name} for ${currentPatient?.name || 'patient'}? Alarms and reminders will be cancelled.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive', 
+          onPress: async () => {
+            await deleteMedication(med.id);
+            Alert.alert('Deleted', `${med.name} has been removed.`);
+          } 
+        }
+      ]
+    );
+  };
 
   const handleRemovePatient = () => {
     if (!currentPatient) return;
@@ -229,16 +248,26 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
                   <Text style={styles.medItemDetail}>{med.dosage} • {med.time}</Text>
                   <Text style={styles.medItemMeal}>🍽️ {med.mealCondition}</Text>
                 </View>
-                <View style={[
-                  styles.statusTag, 
-                  med.statusToday === 'taken' ? styles.statusTagTaken : styles.statusTagPending
-                ]}>
-                  <Text style={[
-                    styles.statusTagText,
-                    med.statusToday === 'taken' ? styles.statusTagTextTaken : styles.statusTagTextPending
+                <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                  <View style={[
+                    styles.statusTag, 
+                    med.statusToday === 'taken' ? styles.statusTagTaken : styles.statusTagPending
                   ]}>
-                    {med.statusToday === 'taken' ? '✓ Taken' : '⏰ Pending'}
-                  </Text>
+                    <Text style={[
+                      styles.statusTagText,
+                      med.statusToday === 'taken' ? styles.statusTagTextTaken : styles.statusTagTextPending
+                    ]}>
+                      {med.statusToday === 'taken' ? '✓ Taken' : '⏰ Pending'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.caretakerDeleteMedBtn}
+                    onPress={() => handleDeleteMed(med)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                    <Text style={styles.caretakerDeleteMedText}>Delete</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ))
@@ -556,6 +585,22 @@ const styles = StyleSheet.create({
   },
   statusTagTextPending: {
     color: '#92400E',
+  },
+  caretakerDeleteMedBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  caretakerDeleteMedText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#EF4444',
   },
   noPatientCard: {
     backgroundColor: '#FFFFFF',
