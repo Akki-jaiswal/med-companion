@@ -26,6 +26,9 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
   const periodScrollRef = useRef(null);
   const isScrollingProgrammatically = useRef(false);
   const programmaticTimeoutRef = useRef(null);
+  const hourRef = useRef('08');
+  const minuteRef = useRef('00');
+  const periodRef = useRef('AM');
 
   const colorOptions = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'];
   const allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -79,6 +82,9 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
   };
 
   const applyTime = (h, m, p, syncScroll = true) => {
+    hourRef.current = h;
+    minuteRef.current = m;
+    periodRef.current = p;
     setSelectedHour(h);
     setSelectedMinute(m);
     setSelectedPeriod(p);
@@ -100,23 +106,26 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
     if (type === 'hour') {
       const safeIdx = Math.min(hoursList.length - 1, idx);
       const h = hoursList[safeIdx];
-      if (h && h !== selectedHour) {
+      if (h && h !== hourRef.current) {
+        hourRef.current = h;
         setSelectedHour(h);
-        setTime(`${h}:${selectedMinute} ${selectedPeriod}`);
+        setTime(`${h}:${minuteRef.current} ${periodRef.current}`);
       }
     } else if (type === 'minute') {
       const safeIdx = Math.min(minutesList.length - 1, idx);
       const m = minutesList[safeIdx];
-      if (m && m !== selectedMinute) {
+      if (m && m !== minuteRef.current) {
+        minuteRef.current = m;
         setSelectedMinute(m);
-        setTime(`${selectedHour}:${m} ${selectedPeriod}`);
+        setTime(`${hourRef.current}:${m} ${periodRef.current}`);
       }
     } else if (type === 'period') {
       const safeIdx = Math.min(periodsList.length - 1, idx);
       const p = periodsList[safeIdx]?.toUpperCase();
-      if (p && p !== selectedPeriod) {
+      if (p && p !== periodRef.current) {
+        periodRef.current = p;
         setSelectedPeriod(p);
-        setTime(`${selectedHour}:${selectedMinute} ${p}`);
+        setTime(`${hourRef.current}:${minuteRef.current} ${p}`);
       }
     }
   };
@@ -127,38 +136,59 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
     if (type === 'hour') {
       const idx = Math.max(0, Math.min(hoursList.length - 1, Math.round(y / ITEM_HEIGHT)));
       const h = hoursList[idx];
-      setSelectedHour(h);
-      setTime(`${h}:${selectedMinute} ${selectedPeriod}`);
+      if (h) {
+        hourRef.current = h;
+        setSelectedHour(h);
+        setTime(`${h}:${minuteRef.current} ${periodRef.current}`);
+      }
     } else if (type === 'minute') {
       const idx = Math.max(0, Math.min(minutesList.length - 1, Math.round(y / ITEM_HEIGHT)));
       const m = minutesList[idx];
-      setSelectedMinute(m);
-      setTime(`${selectedHour}:${m} ${selectedPeriod}`);
+      if (m) {
+        minuteRef.current = m;
+        setSelectedMinute(m);
+        setTime(`${hourRef.current}:${m} ${periodRef.current}`);
+      }
     } else if (type === 'period') {
       const idx = Math.max(0, Math.min(periodsList.length - 1, Math.round(y / ITEM_HEIGHT)));
-      const p = periodsList[idx].toUpperCase();
-      setSelectedPeriod(p);
-      setTime(`${selectedHour}:${selectedMinute} ${p}`);
+      const p = periodsList[idx]?.toUpperCase();
+      if (p) {
+        periodRef.current = p;
+        setSelectedPeriod(p);
+        setTime(`${hourRef.current}:${minuteRef.current} ${p}`);
+      }
     }
   };
 
   const selectHourItem = (h, idx) => {
+    hourRef.current = h;
     setSelectedHour(h);
-    setTime(`${h}:${selectedMinute} ${selectedPeriod}`);
+    setTime(`${h}:${minuteRef.current} ${periodRef.current}`);
+    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+    isScrollingProgrammatically.current = true;
     hourScrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: true });
+    programmaticTimeoutRef.current = setTimeout(() => { isScrollingProgrammatically.current = false; }, 350);
   };
 
   const selectMinuteItem = (m, idx) => {
+    minuteRef.current = m;
     setSelectedMinute(m);
-    setTime(`${selectedHour}:${m} ${selectedPeriod}`);
+    setTime(`${hourRef.current}:${m} ${periodRef.current}`);
+    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+    isScrollingProgrammatically.current = true;
     minuteScrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: true });
+    programmaticTimeoutRef.current = setTimeout(() => { isScrollingProgrammatically.current = false; }, 350);
   };
 
   const selectPeriodItem = (p, idx) => {
     const pUpper = p.toUpperCase();
+    periodRef.current = pUpper;
     setSelectedPeriod(pUpper);
-    setTime(`${selectedHour}:${selectedMinute} ${pUpper}`);
+    setTime(`${hourRef.current}:${minuteRef.current} ${pUpper}`);
+    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+    isScrollingProgrammatically.current = true;
     periodScrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: true });
+    programmaticTimeoutRef.current = setTimeout(() => { isScrollingProgrammatically.current = false; }, 350);
   };
 
   const setTestIn1Min = () => {
@@ -187,6 +217,9 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
         setName(medicationToEdit.name || '');
         setDosage(medicationToEdit.dosage || '');
         const parsed = parseTimeString(medicationToEdit.time || '08:00 AM');
+        hourRef.current = parsed.hour;
+        minuteRef.current = parsed.minute;
+        periodRef.current = parsed.period;
         setSelectedHour(parsed.hour);
         setSelectedMinute(parsed.minute);
         setSelectedPeriod(parsed.period);
@@ -209,6 +242,9 @@ export const AddMedicationModal = ({ visible, onClose, medicationToEdit = null, 
       } else {
         setName('');
         setDosage('');
+        hourRef.current = '08';
+        minuteRef.current = '00';
+        periodRef.current = 'AM';
         setSelectedHour('08');
         setSelectedMinute('00');
         setSelectedPeriod('AM');
