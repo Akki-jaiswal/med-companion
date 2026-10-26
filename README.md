@@ -27,6 +27,11 @@ MedCompanion is a smart mobile application designed to bridge the gap between el
 6. **Hardened Notification Pipeline (Expo Go SDK 53 Compatible)**:
    - Built with dedicated submodule decoupling to prevent native push topic crashes while providing rock-solid local notifications, alarm channels, and background triggers.
 
+7. **Synchronized Native Alarm Drum Wheel & Atomic Time Selection**:
+   - High-fidelity vertical drum wheel picker for hours, minutes, and AM/PM with snap intervals matching native Android clocks.
+   - Ref-based state synchronization (`hourRef`, `minuteRef`, `periodRef`) and programmatic scroll suppression to eliminate async race conditions and prevent rogue 8:00 PM overrides.
+   - Flicker-free unified quick preset chips (`⚡ Test in 1 Min`, `🌅 08:00 AM`, `☀️ 01:30 PM`, `🌙 08:00 PM`).
+
 ---
 
 ## 🤫 Secret Cheat Sheet: React Concepts Made Simple
