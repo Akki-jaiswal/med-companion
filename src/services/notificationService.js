@@ -8,6 +8,8 @@ let setNotificationChannelAsync = null;
 let getPermissionsAsync = null;
 let requestPermissionsAsync = null;
 let cancelScheduledNotificationAsync = null;
+let addNotificationResponseReceivedListener = null;
+let addNotificationReceivedListenerFn = null;
 
 try {
   Notifications = require('expo-notifications');
@@ -18,6 +20,8 @@ try {
     getPermissionsAsync = Notifications.getPermissionsAsync;
     requestPermissionsAsync = Notifications.requestPermissionsAsync;
     cancelScheduledNotificationAsync = Notifications.cancelScheduledNotificationAsync;
+    addNotificationResponseReceivedListener = Notifications.addNotificationResponseReceivedListener;
+    addNotificationReceivedListenerFn = Notifications.addNotificationReceivedListener;
   }
 } catch (e) {
   console.log('Top-level expo-notifications note:', e.message);
@@ -54,6 +58,15 @@ if (!cancelScheduledNotificationAsync) {
   try {
     const m = require('expo-notifications/build/cancelScheduledNotificationAsync');
     cancelScheduledNotificationAsync = m.cancelScheduledNotificationAsync;
+  } catch (e) {}
+}
+if (!addNotificationResponseReceivedListener || !addNotificationReceivedListenerFn) {
+  try {
+    const m = require('expo-notifications/build/NotificationsEmitter');
+    if (m) {
+      addNotificationResponseReceivedListener = addNotificationResponseReceivedListener || m.addNotificationResponseReceivedListener;
+      addNotificationReceivedListenerFn = addNotificationReceivedListenerFn || m.addNotificationReceivedListener;
+    }
   } catch (e) {}
 }
 
@@ -349,4 +362,28 @@ export const triggerCaretakerPushAlert = async (patientName, pillName, scheduled
     console.log('triggerCaretakerPushAlert note:', e.message);
     return false;
   }
+};
+
+// Listener for when patient taps on the system notification in the notification bar
+export const addNotificationResponseListener = (callback) => {
+  try {
+    if (typeof addNotificationResponseReceivedListener === 'function') {
+      return addNotificationResponseReceivedListener(callback);
+    }
+  } catch (e) {
+    console.log('addNotificationResponseListener note:', e.message);
+  }
+  return { remove: () => {} };
+};
+
+// Listener for when a notification is received in foreground/background
+export const addNotificationReceivedListener = (callback) => {
+  try {
+    if (typeof addNotificationReceivedListenerFn === 'function') {
+      return addNotificationReceivedListenerFn(callback);
+    }
+  } catch (e) {
+    console.log('addNotificationReceivedListener note:', e.message);
+  }
+  return { remove: () => {} };
 };
