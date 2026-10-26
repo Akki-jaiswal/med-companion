@@ -171,26 +171,30 @@ export const AppProvider = ({ children }) => {
     });
 
     // When patient taps on the urgent notification in phone status bar, instantly display AlarmModal
-    const responseSub = addNotificationResponseListener((response) => {
-      const data = response?.notification?.request?.content?.data;
-      if (data?.medIds && Array.isArray(data.medIds) && userRole === 'PATIENT') {
-        const matched = medications.filter(m => data.medIds.includes(m.id));
-        if (matched.length > 0) {
-          setActiveAlarmMeds(matched);
-        } else {
-          checkPendingAlarms();
-        }
-      } else {
-        checkPendingAlarms();
-      }
-    });
+    const responseSub = typeof addNotificationResponseListener === 'function'
+      ? addNotificationResponseListener((response) => {
+          const data = response?.notification?.request?.content?.data;
+          if (data?.medIds && Array.isArray(data.medIds) && userRole === 'PATIENT') {
+            const matched = medications.filter(m => data.medIds.includes(m.id));
+            if (matched.length > 0) {
+              setActiveAlarmMeds(matched);
+            } else {
+              checkPendingAlarms();
+            }
+          } else {
+            checkPendingAlarms();
+          }
+        })
+      : { remove: () => {} };
 
-    const receivedSub = addNotificationReceivedListener((notification) => {
-      const data = notification?.request?.content?.data;
-      if (data?.type === 'medication_alarm' && userRole === 'PATIENT') {
-        checkPendingAlarms();
-      }
-    });
+    const receivedSub = typeof addNotificationReceivedListener === 'function'
+      ? addNotificationReceivedListener((notification) => {
+          const data = notification?.request?.content?.data;
+          if (data?.type === 'medication_alarm' && userRole === 'PATIENT') {
+            checkPendingAlarms();
+          }
+        })
+      : { remove: () => {} };
 
     return () => {
       subscription.remove();
