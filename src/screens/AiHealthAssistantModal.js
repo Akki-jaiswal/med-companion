@@ -1,44 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
+import { generateAiHealthResponse, generateDynamicSuggestions } from '../services/aiMedicalService';
 
 export const AiHealthAssistantModal = ({ visible, onClose }) => {
-  const { currentUser } = useApp();
+  const { currentUser, medications, userRole, selectedPatientId } = useApp();
   const userName = currentUser?.name?.split(' ')[0] || 'Friend';
+
+  // Target medications for the active context (Patient or Caretaker viewing patient)
+  const activeMeds = userRole === 'CARETAKER' && selectedPatientId
+    ? medications.filter(m => m.patientId === selectedPatientId)
+    : medications.filter(m => !m.patientId || m.patientId === 'self' || m.patientId === currentUser?.id);
 
   const [inputMessage, setInputMessage] = useState('');
   const [messages, setMessages] = useState([
     {
       id: '1',
       sender: 'ai',
-      text: `Hello ${userName}! 👋 I am your MedCompanion AI Assistant.\n\nYou can ask me about medication dosage, food interactions, side-effects, or what to do if a dose is delayed. How can I help you today?`,
+      text: `Hello ${userName}! 👋 I am your MedCompanion AI Clinical Assistant.\n\nI have loaded your active medical profile. You can ask me:\n• "What diseases do my medicines solve?"\n• "When should I take my pills?"\n• "Which of my medicines is for blood pressure / diabetes / pain?"\n• Or any question about dietary rules & interactions!\n\nHow can I help you today?`,
       time: 'Just now'
     }
   ]);
 
-  const quickQuestions = [
-    'Can I take Metformin on an empty stomach?',
-    'What should I do if I miss a BP dose?',
-    'Any food interactions with blood pressure tablets?',
-    'Why is it important to take medicines with water?'
-  ];
-
-  const getAiResponse = (query) => {
-    const q = query.toLowerCase();
-
-    if (q.includes('empty stomach') || q.includes('food') || q.includes('meal')) {
-      return '🍽️ Dietary Advice: Most diabetes and pain medicines like Metformin or Ibuprofen should be taken AFTER food to prevent stomach irritation and nausea. Blood pressure pills can usually be taken before or after, but keep the timing consistent every day!';
-    } else if (q.includes('miss') || q.includes('forgot') || q.includes('late')) {
-      return '⏰ Missed Dose Rule: Take the missed tablet as soon as you remember. However, if it is almost time for your next scheduled dose, SKIP the missed dose and resume your regular schedule. NEVER take a double dose to compensate!';
-    } else if (q.includes('blood pressure') || q.includes('bp') || q.includes('amlodipine')) {
-      return '🩺 Blood Pressure Pill Info: Avoid eating grapefruit or drinking alcohol, as they can interfere with how your body absorbs calcium channel blockers (like Amlodipine). Try to take it at the exact same hour each morning.';
-    } else if (q.includes('water')) {
-      return '💧 Taking with Water: Always swallow tablets with a full glass (250ml) of plain room-temperature water. This ensures the pill reaches the stomach properly and does not irritate your esophagus or throat.';
-    } else {
-      return `💡 Advice regarding "${query}": Keep your prescriptions stored in a cool, dry place away from direct sunlight. Make sure to consult your doctor before changing dosages, and notify your caretaker if you feel any dizziness!`;
-    }
-  };
+  const quickQuestions = generateDynamicSuggestions(activeMeds);
 
   const handleSend = (textToSend) => {
     const text = textToSend || inputMessage;
@@ -54,9 +39,9 @@ export const AiHealthAssistantModal = ({ visible, onClose }) => {
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
 
-    // Simulate AI thinking and reply
+    // Clinical AI reasoning reply
     setTimeout(() => {
-      const reply = getAiResponse(text);
+      const reply = generateAiHealthResponse(text, activeMeds, userName);
       const aiMsg = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
@@ -64,7 +49,7 @@ export const AiHealthAssistantModal = ({ visible, onClose }) => {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, aiMsg]);
-    }, 600);
+    }, 450);
   };
 
   return (
