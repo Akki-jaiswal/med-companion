@@ -5,28 +5,34 @@ import { useApp } from '../context/AppContext';
 import { generateAndShareAdherenceReport } from '../services/pdfService';
 
 export const WeeklyReportScreen = ({ onBack }) => {
-  const { patients, selectedPatientId, medications, adherenceHistory, currentUser } = useApp();
+  const { patients, selectedPatientId, setSelectedPatientId, medications, adherenceHistory, currentUser, userRole } = useApp();
 
-  const currentPatient = patients.find(p => p.id === selectedPatientId) || patients[0] || (currentUser?.roles?.includes('PATIENT') ? {
-    id: currentUser.id,
-    name: currentUser.name,
-    code: currentUser.pairingCode,
-    phone: currentUser.phone,
-    emergencyPhone: currentUser.emergencyCaretakerPhone,
-    age: currentUser.age || null,
-  } : null);
+  const currentPatient = userRole === 'CARETAKER'
+    ? (patients.find(p => p.id === selectedPatientId) || patients[0])
+    : (currentUser?.roles?.includes('PATIENT') ? {
+        id: currentUser.id,
+        name: currentUser.name,
+        code: currentUser.pairingCode,
+        phone: currentUser.phone,
+        emergencyPhone: currentUser.emergencyCaretakerPhone,
+        age: currentUser.age || null,
+      } : (patients.find(p => p.id === selectedPatientId) || patients[0]));
 
   const patientMeds = currentPatient 
-    ? medications.filter(m => m.patientId === currentPatient.id || m.patientId === currentUser?.id || m.patientId === 'self')
+    ? medications.filter(m => m.patientId === currentPatient.id || (userRole === 'PATIENT' && (m.patientId === currentUser?.id || m.patientId === 'self')))
     : [];
 
-  const totalDoses = adherenceHistory.length;
-  const takenDoses = adherenceHistory.filter(h => h.status === 'Taken').length;
-  const missedDoses = adherenceHistory.filter(h => h.status === 'Missed').length;
+  const patientAdherence = currentPatient
+    ? adherenceHistory.filter(h => !h.patientId || h.patientId === currentPatient.id)
+    : adherenceHistory;
+
+  const totalDoses = patientAdherence.length;
+  const takenDoses = patientAdherence.filter(h => h.status === 'Taken').length;
+  const missedDoses = patientAdherence.filter(h => h.status === 'Missed').length;
   const rate = totalDoses > 0 ? Math.round((takenDoses / totalDoses) * 100) : 100;
 
   const handleExportPDF = () => {
-    if (!currentPatient && patientMeds.length === 0 && adherenceHistory.length === 0) {
+    if (!currentPatient && patientMeds.length === 0 && patientAdherence.length === 0) {
       alert('No patient data or prescription records available to generate a report. Add a medicine first.');
       return;
     }
@@ -37,7 +43,7 @@ export const WeeklyReportScreen = ({ onBack }) => {
       emergencyPhone: currentPatient?.emergencyPhone || currentUser?.emergencyCaretakerPhone || 'Not Specified',
       age: currentPatient?.age || currentUser?.age || null,
     };
-    generateAndShareAdherenceReport(reportPatient, patientMeds, adherenceHistory);
+    generateAndShareAdherenceReport(reportPatient, patientMeds, patientAdherence);
   };
 
   return (
@@ -47,8 +53,40 @@ export const WeeklyReportScreen = ({ onBack }) => {
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.title}>Weekly Compliance Report</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Weekly Compliance Report</Text>
+          {currentPatient && (
+            <Text style={styles.patientSubTitle}>
+              Patient: <Text style={{ fontWeight: '700', color: '#0D9488' }}>{currentPatient.name}</Text> {currentPatient.code ? `(${currentPatient.code})` : ''}
+            </Text>
+          )}
+        </View>
       </View>
+
+      {/* Patient Selector Tabs in Caretaker Mode (When Multiple Patients Linked) */}
+      {userRole === 'CARETAKER' && patients.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.patientTabs}>
+          {patients.map((p) => {
+            const isSelected = p.id === currentPatient?.id;
+            return (
+              <TouchableOpacity
+                key={p.id}
+                style={[styles.patientTabItem, isSelected && styles.patientTabItemActive]}
+                onPress={() => setSelectedPatientId(p.id)}
+              >
+                <Ionicons 
+                  name="person-circle" 
+                  size={20} 
+                  color={isSelected ? '#FFFFFF' : '#0D9488'} 
+                />
+                <Text style={[styles.patientTabText, isSelected && styles.patientTabTextActive]}>
+                  {p.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
 
       {/* Main Stats Card */}
       <View style={styles.heroCard}>
@@ -84,10 +122,14 @@ export const WeeklyReportScreen = ({ onBack }) => {
       </TouchableOpacity>
 
       {/* History Log */}
-      <Text style={styles.historyHeading}>7-Day Adherence Log</Text>
-      {adherenceHistory.length > 0 ? (
-        adherenceHistory.map((item, idx) => (
-          <View key={idx} style={styles.historyItem}>
+      <View style={styles.historyHeaderRow}>
+        <Text style={styles.historyHeading}>7-Day Adherence Log</Text>
+        <Text style={styles.historyCountBadge}>{patientAdherence.length} records</Text>
+      </View>
+
+      {patientAdherence.length > 0 ? (
+        patientAdherence.map((item, idx) => (
+          <View key={item.id || idx} style={styles.historyItem}>
             <View style={[
               styles.historyIconCircle, 
               { backgroundColor: item.status === 'Taken' ? '#DCFCE7' : '#FEE2E2' }
@@ -114,7 +156,7 @@ export const WeeklyReportScreen = ({ onBack }) => {
         <View style={{ backgroundColor: '#FFFFFF', padding: 20, borderRadius: 14, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 8 }}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: '#64748B' }}>No Adherence Records Yet</Text>
           <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 4, textAlign: 'center' }}>
-            Logs will be recorded automatically when medications are marked as Taken or Missed.
+            Logs will be recorded automatically when {currentPatient?.name || 'this patient'} marks doses as Taken or Missed.
           </Text>
         </View>
       )}
@@ -152,6 +194,56 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  patientSubTitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  patientTabs: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  patientTabItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    gap: 6,
+  },
+  patientTabItemActive: {
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
+  },
+  patientTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  patientTabTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  historyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  historyCountBadge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0D9488',
+    backgroundColor: '#CCFBF1',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   heroCard: {
     backgroundColor: '#0D9488',
