@@ -64,7 +64,12 @@ Taken                Not Taken (Timeout)
 
 ---
 
-### Pillar D: Doctor-Ready Adherence Auditing & PDF Generation
+### Pillar D: Doctor-Ready Adherence Auditing & Dynamic PDF Generation
+* **Real-Time Adherence History Streaming**:
+  * Adherence events (`Taken` or `Missed`) are written directly to `adherenceHistory` in Cloud Firestore and local storage `@adherence_history_${patientId}`.
+  * Caretaker devices listen via `subscribeToPatientAdherence(patientId)`, automatically updating the dashboard and report screens in real time.
+* **Dynamic Patient Isolation**:
+  * Compliance rates and logs are strictly scoped: switching patients immediately re-computes stats and updates the 7-day adherence audit log.
 * **7-Day Compliance Audit**:
   * Calculates exact adherence percentage:
     $$\text{Adherence Rate} = \left(\frac{\text{Taken Doses}}{\text{Total Scheduled Doses}}\right) \times 100\%$$
