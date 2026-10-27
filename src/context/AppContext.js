@@ -291,46 +291,73 @@ export const AppProvider = ({ children }) => {
     return () => clearInterval(clockInterval);
   }, [medications]);
 
-  // Real-Time Cloud Listeners & Patient-Scoped Medications Loader
+  // Real-Time Cloud Listeners & Patient-Scoped Data Loader (Medications, Escalations & Adherence Reports)
   useEffect(() => {
-    if (!selectedPatientId) return;
+    // If caretaker has a selected patient, target that patient. Otherwise target current user (patient mode).
+    const activeTargetId = (userRole === 'CARETAKER' && selectedPatientId) 
+      ? selectedPatientId 
+      : (currentUser?.id || 'self');
 
-    // 1. Immediately load local medications for this patient
-    const loadLocalPatientMeds = async () => {
+    if (!activeTargetId) return;
+
+    // 1. Immediately load local medications & adherence history for this patient
+    const loadLocalPatientData = async () => {
       try {
-        const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${selectedPatientId}`);
+        const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${activeTargetId}`);
         if (pMedsStr) {
           const pMeds = JSON.parse(pMedsStr);
           setMedications(prev => {
-            const others = prev.filter(m => m.patientId !== selectedPatientId);
+            const others = prev.filter(m => m.patientId !== activeTargetId);
             return [...others, ...pMeds];
           });
         }
-      } catch (e) {}
-    };
-    loadLocalPatientMeds();
 
-    // 2. Real-time Firestore sync for this patient
-    const unsubscribeMeds = subscribeToPatientMedications(selectedPatientId, (cloudMeds) => {
+        // Load patient-specific adherence history!
+        const pHistStr = await AsyncStorage.getItem(`@adherence_history_${activeTargetId}`);
+        if (pHistStr) {
+          const pHist = JSON.parse(pHistStr);
+          setAdherenceHistory(pHist);
+        } else if (userRole === 'CARETAKER') {
+          // If no local history for this patient yet, initialize clean while cloud loads
+          setAdherenceHistory([]);
+        }
+      } catch (e) {
+        console.log('Error loading local patient data:', e);
+      }
+    };
+    loadLocalPatientData();
+
+    // 2. Real-time Firestore sync for this patient's medications
+    const unsubscribeMeds = subscribeToPatientMedications(activeTargetId, (cloudMeds) => {
       if (cloudMeds && cloudMeds.length > 0) {
         setMedications(prev => {
-          const others = prev.filter(m => m.patientId !== selectedPatientId);
+          const others = prev.filter(m => m.patientId !== activeTargetId);
           return [...others, ...cloudMeds];
         });
       }
     });
 
-    const unsubscribeEscalations = subscribeToEscalationAlerts(selectedPatientId, (cloudAlert) => {
+    // 3. Real-time Firestore sync for this patient's escalations
+    const unsubscribeEscalations = subscribeToEscalationAlerts(activeTargetId, (cloudAlert) => {
       if (cloudAlert) {
         setEscalationAlert(cloudAlert);
+      }
+    });
+
+    // 4. Real-time Firestore sync for this patient's adherence history!
+    const unsubscribeAdherence = subscribeToPatientAdherence(activeTargetId, (cloudHistory) => {
+      if (cloudHistory && Array.isArray(cloudHistory)) {
+        setAdherenceHistory(cloudHistory);
+        AsyncStorage.setItem(`@adherence_history_${activeTargetId}`, JSON.stringify(cloudHistory)).catch(() => {});
       }
     });
 
     return () => {
       unsubscribeMeds();
       unsubscribeEscalations();
+      unsubscribeAdherence();
     };
-  }, [selectedPatientId]);
+  }, [selectedPatientId, userRole, currentUser?.id]);
 
   const saveMedications = async (updatedMeds) => {
     setMedications(updatedMeds);
@@ -1062,7 +1089,7 @@ export const AppProvider = ({ children }) => {
       await AsyncStorage.setItem(`@patients_${currentUser.id}`, JSON.stringify(updatedPatients));
     }
 
-    // 5. Load this patient's medications immediately!
+    // 5. Load this patient's medications & adherence history immediately!
     try {
       const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${foundPatient.id}`);
       if (pMedsStr) {
@@ -1072,8 +1099,14 @@ export const AppProvider = ({ children }) => {
           return [...others, ...pMeds];
         });
       }
+      const pHistStr = await AsyncStorage.getItem(`@adherence_history_${foundPatient.id}`);
+      if (pHistStr) {
+        setAdherenceHistory(JSON.parse(pHistStr));
+      } else {
+        setAdherenceHistory([]);
+      }
     } catch (e) {
-      console.log('Error loading patient medications:', e);
+      console.log('Error loading patient medications/history:', e);
     }
 
     return { success: true, patient: foundPatient };
