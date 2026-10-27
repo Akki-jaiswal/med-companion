@@ -43,9 +43,12 @@ export const CaretakerDashboardScreen = ({ onNavigateReport }) => {
     );
   };
 
-  // Stats calculation
-  const totalDoses = adherenceHistory.length;
-  const takenDoses = adherenceHistory.filter(h => h.status === 'Taken').length;
+  // Stats calculation dynamically scoped to currentPatient
+  const patientAdherence = currentPatient 
+    ? adherenceHistory.filter(h => !h.patientId || h.patientId === currentPatient.id)
+    : [];
+  const totalDoses = patientAdherence.length;
+  const takenDoses = patientAdherence.filter(h => h.status === 'Taken').length;
   const adherenceRate = totalDoses > 0 ? Math.round((takenDoses / totalDoses) * 100) : 100;
 
   return (
