@@ -306,6 +306,13 @@ export const deletePatientCompletelyFromCloud = async (patientId, pairingCode, e
       snapEsc.forEach(async (d) => {
         await deleteDoc(d.ref).catch(() => {});
       });
+
+      // Purge adherence history
+      const qAdh = query(collection(db, 'adherenceHistory'), where('patientId', '==', patientId));
+      const snapAdh = await getDocs(qAdh);
+      snapAdh.forEach(async (d) => {
+        await deleteDoc(d.ref).catch(() => {});
+      });
     }
 
     // 5. Remove this patient from any caretaker's linkedPatients array in Firestore
@@ -353,5 +360,63 @@ export const resolveCloudEscalation = async (patientId) => {
     console.log(`[Backend] Resolved active cloud escalations for patient ${patientId}`);
   } catch (error) {
     console.log('[Backend] Error resolving cloud escalation:', error.message);
+  }
+};
+
+/**
+ * 10. SAVE ADHERENCE RECORD TO CLOUD
+ * Writes an adherence event (Taken / Missed) to Cloud Firestore.
+ */
+export const saveAdherenceRecordToCloud = async (patientId, record) => {
+  if (!isFirebaseConfigured() || !db || !patientId) return false;
+
+  try {
+    const docId = record.id || `adh_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const adherenceRef = doc(db, 'adherenceHistory', docId);
+    await setDoc(adherenceRef, {
+      ...record,
+      id: docId,
+      patientId: patientId,
+      timestamp: record.timestamp || Date.now(),
+      createdAt: new Date().toISOString(),
+    });
+    console.log(`[Backend] Saved adherence record ${docId} for patient ${patientId} to Cloud Firestore`);
+    return true;
+  } catch (error) {
+    console.log('[Backend] saveAdherenceRecord error:', error.message);
+    return false;
+  }
+};
+
+/**
+ * 11. REAL-TIME ADHERENCE HISTORY LISTENER (For Caretaker Phone)
+ * Dynamically streams adherence logs (Taken / Missed) for a specific patient.
+ */
+export const subscribeToPatientAdherence = (patientId, onUpdate) => {
+  if (!isFirebaseConfigured() || !db || !patientId) return () => {};
+
+  try {
+    const q = query(
+      collection(db, 'adherenceHistory'), 
+      where('patientId', '==', patientId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const records = [];
+      snapshot.forEach((d) => {
+        records.push({ id: d.id, ...d.data() });
+      });
+      // Sort newest first
+      records.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      console.log(`[Backend] Synced ${records.length} adherence records for patient ${patientId} from Cloud Firestore`);
+      onUpdate(records);
+    }, (error) => {
+      console.log('[Backend] Adherence listener error:', error.message);
+    });
+
+    return unsubscribe;
+  } catch (error) {
+    console.log('[Backend] Subscribe adherence error:', error.message);
+    return () => {};
   }
 };
