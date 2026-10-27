@@ -25,7 +25,9 @@ import {
   findUserInCloud,
   deleteUserFromCloud,
   deletePatientCompletelyFromCloud,
-  resolveCloudEscalation
+  resolveCloudEscalation,
+  saveAdherenceRecordToCloud,
+  subscribeToPatientAdherence
 } from '../services/firestoreService';
 
 const AppContext = createContext();
@@ -628,6 +630,56 @@ export const AppProvider = ({ children }) => {
     switchUserRole(role);
   };
 
+  // Centralized helper to record an adherence event with full patient metadata and cloud sync
+  const recordAdherenceEvent = async (targetPatientId, eventData) => {
+    const fullRecord = {
+      id: eventData.id || `adh_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      patientId: targetPatientId,
+      timestamp: Date.now(),
+      ...eventData,
+    };
+
+    setAdherenceHistory(prev => {
+      let convertedMissed = false;
+      const nextHist = prev.map(rec => {
+        if (
+          rec.date === fullRecord.date && 
+          rec.pillName === fullRecord.pillName && 
+          rec.status === 'Missed' && 
+          fullRecord.status === 'Taken' && 
+          !convertedMissed
+        ) {
+          convertedMissed = true;
+          return { 
+            ...rec, 
+            status: 'Taken', 
+            onTime: false, 
+            takenAt: fullRecord.takenAt,
+            timestamp: Date.now(),
+            patientId: targetPatientId
+          };
+        }
+        return rec;
+      });
+
+      if (!convertedMissed) {
+        nextHist.unshift(fullRecord);
+      }
+
+      if (currentUser?.id) {
+        AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
+      }
+      if (targetPatientId && targetPatientId !== currentUser?.id) {
+        AsyncStorage.setItem(`@adherence_history_${targetPatientId}`, JSON.stringify(nextHist)).catch(() => {});
+      }
+      AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
+      return nextHist;
+    });
+
+    // Cloud Firestore Real-Time Sync
+    saveAdherenceRecordToCloud(targetPatientId, fullRecord).catch(() => {});
+  };
+
   // Mark medicine as Taken (Converts any previously missed status to Taken so reports remain 100% accurate!)
   const markAsTaken = async (medId) => {
     // Cancel the pending Caretaker Escalation notification because user took the pill!
@@ -648,38 +700,13 @@ export const AppProvider = ({ children }) => {
         const targetOwnerId = m.patientId || currentUser?.id || 'self';
         targetOwner = targetOwnerId;
 
-        setAdherenceHistory(prev => {
-          let convertedMissed = false;
-          // Look for any existing 'Missed' record for this medicine today
-          const nextHist = prev.map(rec => {
-            if (rec.date === todayStr && rec.pillName === m.name && rec.status === 'Missed' && !convertedMissed) {
-              convertedMissed = true;
-              // Convert missed into taken!
-              return { ...rec, status: 'Taken', onTime: false, takenAt: timeStr };
-            }
-            return rec;
-          });
-
-          // If no previous missed record was found, add a clean Taken record
-          if (!convertedMissed) {
-            nextHist.unshift({ 
-              date: todayStr, 
-              pillName: m.name, 
-              time: m.time, 
-              status: 'Taken', 
-              onTime: true, 
-              takenAt: timeStr 
-            });
-          }
-
-          if (currentUser?.id) {
-            AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
-          }
-          if (targetOwnerId && targetOwnerId !== currentUser?.id) {
-            AsyncStorage.setItem(`@adherence_history_${targetOwnerId}`, JSON.stringify(nextHist)).catch(() => {});
-          }
-          AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
-          return nextHist;
+        recordAdherenceEvent(targetOwnerId, {
+          date: todayStr,
+          pillName: m.name,
+          time: m.time,
+          status: 'Taken',
+          onTime: true,
+          takenAt: timeStr,
         });
 
         return { ...m, statusToday: 'taken', takenAt: timeStr };
@@ -715,35 +742,13 @@ export const AppProvider = ({ children }) => {
       const targetOwnerId = m.patientId || currentUser?.id || 'self';
       targetOwner = targetOwnerId;
 
-      setAdherenceHistory(prev => {
-        let convertedMissed = false;
-        const nextHist = prev.map(rec => {
-          if (rec.date === todayStr && rec.pillName === m.name && rec.status === 'Missed' && !convertedMissed) {
-            convertedMissed = true;
-            return { ...rec, status: 'Taken', onTime: false, takenAt: timeStr };
-          }
-          return rec;
-        });
-
-        if (!convertedMissed) {
-          nextHist.unshift({ 
-            date: todayStr, 
-            pillName: m.name, 
-            time: m.time, 
-            status: 'Taken', 
-            onTime: true, 
-            takenAt: timeStr 
-          });
-        }
-
-        if (currentUser?.id) {
-          AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
-        }
-        if (targetOwnerId && targetOwnerId !== currentUser?.id) {
-          AsyncStorage.setItem(`@adherence_history_${targetOwnerId}`, JSON.stringify(nextHist)).catch(() => {});
-        }
-        AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
-        return nextHist;
+      recordAdherenceEvent(targetOwnerId, {
+        date: todayStr,
+        pillName: m.name,
+        time: m.time,
+        status: 'Taken',
+        onTime: true,
+        takenAt: timeStr,
       });
 
       updateMedicationStatusInCloud(m.id, 'taken', timeStr).catch(() => {});
@@ -811,17 +816,12 @@ export const AppProvider = ({ children }) => {
 
     for (const med of medsArray) {
       const targetOwnerId = med.patientId || currentUser?.id || 'self';
-      const missedRecord = { date: todayStr, pillName: med.name, time: med.time, status: 'Missed', onTime: false };
-      setAdherenceHistory(prev => {
-        const nextHist = [missedRecord, ...prev];
-        if (currentUser?.id) {
-          AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
-        }
-        if (targetOwnerId && targetOwnerId !== currentUser?.id) {
-          AsyncStorage.setItem(`@adherence_history_${targetOwnerId}`, JSON.stringify(nextHist)).catch(() => {});
-        }
-        AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
-        return nextHist;
+      recordAdherenceEvent(targetOwnerId, {
+        date: todayStr,
+        pillName: med.name,
+        time: med.time,
+        status: 'Missed',
+        onTime: false,
       });
       updateMedicationStatusInCloud(med.id, 'missed').catch(() => {});
     }
