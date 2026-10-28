@@ -4,11 +4,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   registerForPushNotificationsAsync, 
   scheduleMedicationAlarm, 
+  schedulePreAlarmNotification,
   fireInstantMedicationNotification,
   scheduleCaretakerEscalationNotification,
   cancelScheduledNotification,
   triggerCaretakerPushAlert 
 } from '../services/notificationService';
+import { sendMissedMedicationSMS } from '../services/emergencyService';
 import {
   subscribeToPatientMedications,
   updateMedicationStatusInCloud,
@@ -67,7 +69,8 @@ export const AppProvider = ({ children }) => {
   // 100% Dynamic Adherence History (Starts completely empty)
   const [adherenceHistory, setAdherenceHistory] = useState([]);
 
-  const [activeAlarmMed, setActiveAlarmMed] = useState(null);
+  const [activeAlarmMeds, setActiveAlarmMeds] = useState([]);
+  const activeAlarmMed = activeAlarmMeds.length > 0 ? activeAlarmMeds[0] : null;
   const [escalationAlert, setEscalationAlert] = useState(null);
 
   // Track fired alarms so each alarm only rings once per scheduled time
@@ -77,38 +80,64 @@ export const AppProvider = ({ children }) => {
   // Check pending alarms when app resumes from background or on clock tick
   const checkPendingAlarms = async () => {
     const now = Date.now();
-    for (const med of medications) {
-      if (med.statusToday === 'pending' && med.targetTimestamp) {
-        // Resolve patient identity accurately (never assume currentUser is patient if currently in Caretaker mode)
-        const owningPatient = patients.find(p => p.id === med.patientId);
-        const resolvedPatientName = med.patientName || (userRole === 'PATIENT' ? currentUser?.name : owningPatient?.name) || 'Patient';
 
+    const isMedScheduledToday = (med) => {
+      if (!med.frequency || med.frequency === 'Daily') return true;
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const todayName = dayNames[new Date().getDay()];
+      if (med.frequency === 'Specific Days') {
+        return Array.isArray(med.selectedDays) && med.selectedDays.includes(todayName);
+      }
+      if (med.frequency === 'Weekly') {
+        return !med.weeklyDay || med.weeklyDay === todayName;
+      }
+      return true;
+    };
+
+    const dueList = [];
+    const missedList = [];
+
+    for (const med of medications) {
+      if (med.statusToday === 'pending' && med.targetTimestamp && isMedScheduledToday(med)) {
         // Case A: User was away from app and >60s passed since scheduled time without acknowledgement
         if (now >= med.targetTimestamp + 60000 && !firedAlarmIdsRef.current.has(med.id)) {
           firedAlarmIdsRef.current.add(med.id);
-          triggerMissedEscalation(med);
+          missedList.push(med);
         }
         // Case B: Alarm time has arrived (within current 60s active countdown window)
         else if (now >= med.targetTimestamp && !firedAlarmIdsRef.current.has(med.id)) {
           firedAlarmIdsRef.current.add(med.id);
-          
-          // CRITICAL: Full-screen medication alarm & TTS are strictly for PATIENTS!
-          // Caretakers monitor patients and should NEVER be prompted to take a patient's medication.
-          if (userRole === 'PATIENT') {
-            setActiveAlarmMed(med);
-            fireInstantMedicationNotification(med);
-          }
+          dueList.push(med);
+        }
+      }
+    }
 
-          // Schedule background OS notification for Caretaker in 60s in case patient minimizes app
-          const notifId = await scheduleCaretakerEscalationNotification(
-            resolvedPatientName,
-            med.name,
-            med.time,
-            60
-          );
-          if (notifId) {
-            pendingEscalationsRef.current[med.id] = notifId;
-          }
+    if (missedList.length > 0) {
+      triggerMissedEscalation(missedList);
+    }
+
+    if (dueList.length > 0) {
+      // CRITICAL: Full-screen medication alarm & TTS are strictly for PATIENTS!
+      if (userRole === 'PATIENT') {
+        setActiveAlarmMeds(prev => {
+          const combined = [...prev, ...dueList.filter(d => !prev.some(p => p.id === d.id))];
+          return combined;
+        });
+        fireInstantMedicationNotification(dueList);
+      }
+
+      // Schedule background OS notification for Caretaker in 60s in case patient minimizes app
+      for (const med of dueList) {
+        const owningPatient = patients.find(p => p.id === med.patientId);
+        const resolvedPatientName = med.patientName || (userRole === 'PATIENT' ? currentUser?.name : owningPatient?.name) || 'Patient';
+        const notifId = await scheduleCaretakerEscalationNotification(
+          resolvedPatientName,
+          med.name,
+          med.time,
+          60
+        );
+        if (notifId) {
+          pendingEscalationsRef.current[med.id] = notifId;
         }
       }
     }
@@ -560,77 +589,130 @@ export const AppProvider = ({ children }) => {
     });
 
     saveMedications(updated);
-    setActiveAlarmMed(null);
+    setActiveAlarmMeds(prev => prev.filter(m => m.id !== medId));
 
     await updateMedicationStatusInCloud(medId, 'taken', timeStr);
   };
 
-  // Patient snoozes alarm
-  const snoozeAlarm = (medId) => {
-    // Cancel any scheduled escalation for this round
-    const pendingNotifId = pendingEscalationsRef.current[medId];
-    if (pendingNotifId) {
-      cancelScheduledNotification(pendingNotifId);
-      delete pendingEscalationsRef.current[medId];
+  // Mark all currently ringing alarm pills as taken (for combo pills)
+  const markAllAsTaken = async () => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const todayStr = now.toISOString().split('T')[0];
+    const medIds = new Set(activeAlarmMeds.map(m => m.id));
+
+    for (const m of activeAlarmMeds) {
+      const pendingNotifId = pendingEscalationsRef.current[m.id];
+      if (pendingNotifId) {
+        cancelScheduledNotification(pendingNotifId);
+        delete pendingEscalationsRef.current[m.id];
+      }
+      const targetOwnerId = m.patientId || currentUser?.id || 'self';
+      const newRecord = { date: todayStr, pillName: m.name, time: m.time, status: 'Taken', onTime: true };
+      setAdherenceHistory(prev => {
+        const nextHist = [newRecord, ...prev];
+        if (currentUser?.id) {
+          AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
+        }
+        if (targetOwnerId && targetOwnerId !== currentUser?.id) {
+          AsyncStorage.setItem(`@adherence_history_${targetOwnerId}`, JSON.stringify(nextHist)).catch(() => {});
+        }
+        AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
+        return nextHist;
+      });
+      updateMedicationStatusInCloud(m.id, 'taken', timeStr).catch(() => {});
     }
 
-    setActiveAlarmMed(null);
-    const newTarget = Date.now() + 60 * 1000;
-    firedAlarmIdsRef.current.delete(medId);
+    const updated = medications.map(m => medIds.has(m.id) ? { ...m, statusToday: 'taken', takenAt: timeStr } : m);
+    saveMedications(updated);
+    setActiveAlarmMeds([]);
+  };
 
-    const updated = medications.map(m => m.id === medId ? { ...m, targetTimestamp: newTarget } : m);
+  // Patient snoozes alarm (single or combo)
+  const snoozeAlarm = (medId) => {
+    const targetMeds = medId ? activeAlarmMeds.filter(m => m.id === medId) : activeAlarmMeds;
+    const now = Date.now();
+    const newTarget = now + 60 * 1000;
+
+    for (const m of targetMeds) {
+      const pendingNotifId = pendingEscalationsRef.current[m.id];
+      if (pendingNotifId) {
+        cancelScheduledNotification(pendingNotifId);
+        delete pendingEscalationsRef.current[m.id];
+      }
+      firedAlarmIdsRef.current.delete(m.id);
+      scheduleMedicationAlarm(m, 60);
+    }
+
+    const targetSet = new Set(targetMeds.map(t => t.id));
+    const updated = medications.map(m => targetSet.has(m.id) ? { ...m, targetTimestamp: newTarget } : m);
     saveMedications(updated);
 
-    scheduleMedicationAlarm(activeAlarmMed, 60);
+    if (medId) {
+      setActiveAlarmMeds(prev => prev.filter(m => m.id !== medId));
+    } else {
+      setActiveAlarmMeds([]);
+    }
     alert('Alarm snoozed! Will automatically ring again in 1 minute.');
   };
 
-  // Trigger Missed Escalation -> FIRES REAL ANDROID NOTIFICATION TRAY ALERT!
-  const triggerMissedEscalation = async (med) => {
-    const pendingNotifId = pendingEscalationsRef.current[med.id];
-    if (pendingNotifId) {
-      delete pendingEscalationsRef.current[med.id];
-    }
+  // Trigger Missed Escalation -> FIRES REAL ANDROID NOTIFICATION TRAY ALERT & DISPATCHES SMS!
+  const triggerMissedEscalation = async (medOrMeds) => {
+    const medsArray = Array.isArray(medOrMeds) ? medOrMeds : [medOrMeds];
+    if (medsArray.length === 0) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const updated = medications.map(m => m.id === med.id ? { ...m, statusToday: 'missed' } : m);
+    const medIds = new Set(medsArray.map(m => m.id));
+
+    for (const med of medsArray) {
+      const pendingNotifId = pendingEscalationsRef.current[med.id];
+      if (pendingNotifId) {
+        delete pendingEscalationsRef.current[med.id];
+      }
+    }
+
+    const updated = medications.map(m => medIds.has(m.id) ? { ...m, statusToday: 'missed' } : m);
     saveMedications(updated);
 
-    const targetOwnerId = med.patientId || currentUser?.id || 'self';
-    const missedRecord = { date: todayStr, pillName: med.name, time: med.time, status: 'Missed', onTime: false };
-    setAdherenceHistory(prev => {
-      const nextHist = [missedRecord, ...prev];
-      if (currentUser?.id) {
-        AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
-      }
-      if (targetOwnerId && targetOwnerId !== currentUser?.id) {
-        AsyncStorage.setItem(`@adherence_history_${targetOwnerId}`, JSON.stringify(nextHist)).catch(() => {});
-      }
-      AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
-      return nextHist;
-    });
+    const firstMed = medsArray[0];
+    const owningPatient = patients.find(p => p.id === firstMed.patientId);
+    const resolvedPatientName = firstMed.patientName || (userRole === 'PATIENT' ? currentUser?.name : owningPatient?.name) || 'Patient';
+    const resolvedPatientId = firstMed.patientId || owningPatient?.id || (userRole === 'PATIENT' ? currentUser?.id : selectedPatientId);
+    const combinedPillNames = medsArray.map(m => m.name).join(', ');
+    const phoneToAlert = owningPatient?.emergencyPhone || owningPatient?.phone || caretakerPhone || currentUser?.emergencyCaretakerPhone;
 
-    setActiveAlarmMed(null);
+    for (const med of medsArray) {
+      const targetOwnerId = med.patientId || currentUser?.id || 'self';
+      const missedRecord = { date: todayStr, pillName: med.name, time: med.time, status: 'Missed', onTime: false };
+      setAdherenceHistory(prev => {
+        const nextHist = [missedRecord, ...prev];
+        if (currentUser?.id) {
+          AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
+        }
+        if (targetOwnerId && targetOwnerId !== currentUser?.id) {
+          AsyncStorage.setItem(`@adherence_history_${targetOwnerId}`, JSON.stringify(nextHist)).catch(() => {});
+        }
+        AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
+        return nextHist;
+      });
+      updateMedicationStatusInCloud(med.id, 'missed').catch(() => {});
+    }
 
-    // Accurately resolve owning patient's name and ID (never default to Dr. Sharma/Caretaker)
-    const owningPatient = patients.find(p => p.id === med.patientId);
-    const resolvedPatientName = med.patientName || (userRole === 'PATIENT' ? currentUser?.name : owningPatient?.name) || 'Patient';
-    const resolvedPatientId = med.patientId || owningPatient?.id || (userRole === 'PATIENT' ? currentUser?.id : selectedPatientId);
+    setActiveAlarmMeds(prev => prev.filter(m => !medIds.has(m.id)));
 
     const alertPayload = {
       patientId: resolvedPatientId,
       patientName: resolvedPatientName,
-      pillName: med.name,
-      scheduledTime: med.time,
+      pillName: combinedPillNames,
+      scheduledTime: firstMed.time,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      phone: owningPatient?.phone || caretakerPhone,
+      phone: phoneToAlert,
     };
 
     setEscalationAlert(alertPayload);
 
     // 1. Sync to Cloud Firestore
     await triggerCloudEscalation(alertPayload);
-    await updateMedicationStatusInCloud(med.id, 'missed');
 
     // 2. FIRES ACTUAL ANDROID SYSTEM NOTIFICATION DIRECTLY ON PHONE!
     await triggerCaretakerPushAlert(
@@ -638,6 +720,11 @@ export const AppProvider = ({ children }) => {
       alertPayload.pillName,
       alertPayload.scheduledTime
     );
+
+    // 3. Dispatch SMS alert to registered emergency caretaker phone
+    if (phoneToAlert) {
+      sendMissedMedicationSMS(phoneToAlert, resolvedPatientName, combinedPillNames, firstMed.time);
+    }
   };
 
   // Add new medicine (from Caretaker or Patient)
@@ -689,6 +776,13 @@ export const AppProvider = ({ children }) => {
     const delay = Math.max(1, Math.round((targetTimestamp - now) / 1000));
     scheduleMedicationAlarm(item, delay);
 
+    // Schedule 10-minute pre-alarm notification in the tray
+    if (delay > 600) {
+      schedulePreAlarmNotification(item, delay - 600);
+    } else if (delay > 300) {
+      schedulePreAlarmNotification(item, delay - 300);
+    }
+
     // Caretaker background escalation notification
     const patientObj = patients.find(p => p.id === targetPatientId);
     const patientName = patientObj?.name || currentUser?.name || 'Patient';
@@ -729,6 +823,11 @@ export const AppProvider = ({ children }) => {
 
     const delay = Math.max(1, Math.round((targetTimestamp - now) / 1000));
     scheduleMedicationAlarm(item, delay);
+    if (delay > 600) {
+      schedulePreAlarmNotification(item, delay - 600);
+    } else if (delay > 300) {
+      schedulePreAlarmNotification(item, delay - 300);
+    }
   };
 
   // Delete medicine
@@ -739,8 +838,7 @@ export const AppProvider = ({ children }) => {
       delete pendingEscalationsRef.current[medId];
     }
     firedAlarmIdsRef.current.delete(medId);
-    if (activeAlarmMed?.id === medId) {
-      setActiveAlarmMed(null);
+    setActiveAlarmMeds(prev => prev.filter(m => m.id !== medId));
     }
 
     const targetMed = medications.find(m => m.id === medId);
@@ -964,8 +1062,11 @@ export const AppProvider = ({ children }) => {
         updateMedication,
         deleteMedication,
         markAsTaken,
+        markAllAsTaken,
         snoozeAlarm,
         activeAlarmMed,
+        activeAlarmMeds,
+        setActiveAlarmMeds,
         setActiveAlarmMed,
         triggerMissedEscalation,
         escalationAlert,

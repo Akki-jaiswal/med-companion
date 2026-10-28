@@ -32,7 +32,7 @@ export const registerForPushNotificationsAsync = async () => {
     }
 
     if (Platform.OS === 'android' && Notifications.setNotificationChannelAsync) {
-      // Android System Notification Channel with Alarm sound & strong vibration
+      // 1. Android System Urgent Alarm Channel (High priority + Sound + Strong Vibration)
       await Notifications.setNotificationChannelAsync('medication-alarms', {
         name: 'Urgent Medication Alarms',
         importance: Notifications.AndroidImportance.MAX,
@@ -43,6 +43,18 @@ export const registerForPushNotificationsAsync = async () => {
         lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC,
         lightColor: '#DC2626',
       });
+
+      // 2. Upcoming 10-Minute Pre-Alarm Channel (Notifies before pill time)
+      await Notifications.setNotificationChannelAsync('medication-reminders', {
+        name: 'Upcoming Pill Reminders (10m Prior)',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 300, 200, 300],
+        sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC,
+        lightColor: '#0D9488',
+      });
     }
 
     return true;
@@ -52,19 +64,29 @@ export const registerForPushNotificationsAsync = async () => {
   }
 };
 
-// Fire an immediate heads-up alarm notification on the device
-export const fireInstantMedicationNotification = async (med) => {
+// Fire an immediate heads-up alarm notification on the device (Supports single or multiple pills)
+export const fireInstantMedicationNotification = async (medOrMeds) => {
   try {
     if (!Notifications?.scheduleNotificationAsync) return null;
+    const medsArray = Array.isArray(medOrMeds) ? medOrMeds : [medOrMeds];
+    if (medsArray.length === 0) return null;
+
+    const names = medsArray.map(m => m.name).join(', ');
+    const title = medsArray.length === 1 
+      ? `⏰ TIME FOR MEDICATION: ${medsArray[0].name}`
+      : `⏰ TIME FOR MEDICATIONS (${medsArray.length} Pills)`;
+    const body = medsArray.length === 1
+      ? `Dosage: ${medsArray[0].dosage} (${medsArray[0].mealCondition}). Please take it now!`
+      : `Prescriptions: ${names}. Take with water (${medsArray[0].mealCondition})!`;
 
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: `⏰ TIME FOR MEDICATION: ${med.name}`,
-        body: `Dosage: ${med.dosage} (${med.mealCondition}). Please take it now!`,
+        title,
+        body,
         sound: 'default',
         priority: Notifications.AndroidNotificationPriority?.MAX,
         channelId: 'medication-alarms',
-        data: { medId: med.id, type: 'medication_alarm' },
+        data: { medIds: medsArray.map(m => m.id), type: 'medication_alarm' },
       },
       trigger: null, // Fires immediately!
     });
@@ -75,20 +97,63 @@ export const fireInstantMedicationNotification = async (med) => {
   }
 };
 
-// Schedule background alarm for future seconds
-export const scheduleMedicationAlarm = async (med, delaySeconds = 60) => {
+// Schedule 5-10 Minute Pre-Alarm in Notification Tray
+export const schedulePreAlarmNotification = async (medOrMeds, delaySeconds = 300) => {
   try {
-    if (!Notifications?.scheduleNotificationAsync) return null;
+    if (!Notifications?.scheduleNotificationAsync || delaySeconds <= 0) return null;
+    const medsArray = Array.isArray(medOrMeds) ? medOrMeds : [medOrMeds];
+    if (medsArray.length === 0) return null;
 
+    const names = medsArray.map(m => m.name).join(', ');
+    const first = medsArray[0];
     const safeSeconds = Math.max(1, Math.round(delaySeconds));
+
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: `⏰ TIME FOR MEDICATION: ${med.name}`,
-        body: `Dosage: ${med.dosage} (${med.mealCondition}). Please take it now!`,
+        title: `⏰ Upcoming in 10 mins: ${names}`,
+        body: `Scheduled for ${first.time} (${first.mealCondition}). Keep your water ready!`,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority?.HIGH,
+        channelId: 'medication-reminders',
+        data: { medIds: medsArray.map(m => m.id), type: 'pre_alarm' },
+      },
+      trigger: {
+        seconds: safeSeconds,
+      },
+    });
+    return id;
+  } catch (error) {
+    console.log('schedulePreAlarmNotification note:', error.message);
+    return null;
+  }
+};
+
+// Schedule background alarm for future seconds (Supports single or multiple pills)
+export const scheduleMedicationAlarm = async (medOrMeds, delaySeconds = 60) => {
+  try {
+    if (!Notifications?.scheduleNotificationAsync) return null;
+    const medsArray = Array.isArray(medOrMeds) ? medOrMeds : [medOrMeds];
+    if (medsArray.length === 0) return null;
+
+    const names = medsArray.map(m => m.name).join(', ');
+    const first = medsArray[0];
+    const safeSeconds = Math.max(1, Math.round(delaySeconds));
+
+    const title = medsArray.length === 1 
+      ? `⏰ TIME FOR MEDICATION: ${first.name}`
+      : `⏰ TIME FOR MEDICATIONS (${medsArray.length} Pills)`;
+    const body = medsArray.length === 1
+      ? `Dosage: ${first.dosage} (${first.mealCondition}). Please take it now!`
+      : `Prescriptions: ${names}. Take with water (${first.mealCondition})!`;
+
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
         sound: 'default',
         priority: Notifications.AndroidNotificationPriority?.MAX,
         channelId: 'medication-alarms',
-        data: { medId: med.id, type: 'medication_alarm' },
+        data: { medIds: medsArray.map(m => m.id), type: 'medication_alarm' },
       },
       trigger: {
         seconds: safeSeconds,

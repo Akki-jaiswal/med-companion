@@ -1,5 +1,5 @@
 import * as Linking from 'expo-linking';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 export const callCaretaker = async (phoneNumber) => {
   if (!phoneNumber) {
@@ -32,4 +32,19 @@ export const sendSOSAlert = async (patientName, phoneNumber) => {
       { text: 'Call Now', onPress: () => callCaretaker(phoneNumber) }
     ]
   );
+};
+
+export const sendMissedMedicationSMS = async (phoneNumber, patientName, pillNames, scheduledTime) => {
+  if (!phoneNumber) return;
+  const message = `🚨 MedCompanion Alert: Patient ${patientName} missed taking their medication (${pillNames}) scheduled at ${scheduledTime}. Please check on them immediately!`;
+  const separator = Platform.OS === 'ios' ? '&' : '?';
+  const url = `sms:${phoneNumber}${separator}body=${encodeURIComponent(message)}`;
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (supported) {
+      await Linking.openURL(url);
+    }
+  } catch (e) {
+    console.log('SMS dispatch note:', e.message);
+  }
 };
