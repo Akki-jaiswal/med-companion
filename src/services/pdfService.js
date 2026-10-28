@@ -1,5 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 import { Alert } from 'react-native';
 
 export const generateAndShareAdherenceReport = async (patient, medications, history) => {
@@ -197,13 +198,37 @@ export const generateAndShareAdherenceReport = async (patient, medications, hist
   `;
 
   try {
-    const { uri } = await Print.printToFileAsync({ html: htmlContent });
+    const file = await Print.printToFileAsync({ html: htmlContent });
+    
+    // On Android, printToFileAsync writes to a restricted cache directory that sharing cannot access.
+    // Moving the file to FileSystem.documentDirectory guarantees file provider read permissions.
+    const cleanFileName = `MedCompanion_Adherence_Report_${Date.now()}.pdf`;
+    let targetUri = file.uri;
+
+    try {
+      if (FileSystem.documentDirectory) {
+        const destUri = `${FileSystem.documentDirectory}${cleanFileName}`;
+        await FileSystem.copyAsync({
+          from: file.uri,
+          to: destUri,
+        });
+        targetUri = destUri;
+      }
+    } catch (fsErr) {
+      console.log('FileSystem copy fallback:', fsErr.message);
+    }
+
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+      await Sharing.shareAsync(targetUri, { 
+        dialogTitle: 'Export Doctor-Ready Medical Adherence Report',
+        mimeType: 'application/pdf',
+        UTI: 'com.adobe.pdf' 
+      });
     } else {
-      Alert.alert('Report Generated', `PDF saved locally at: ${uri}`);
+      // Fallback: Directly open system print dialogue
+      await Print.printAsync({ html: htmlContent });
     }
   } catch (error) {
-    Alert.alert('Export Error', 'Could not generate PDF: ' + error.message);
+    Alert.alert('Export Error', 'Could not generate or share PDF: ' + error.message);
   }
 };
