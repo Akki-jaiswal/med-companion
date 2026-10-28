@@ -256,6 +256,31 @@ export const AppProvider = ({ children }) => {
   // Register New User (Dynamic Name, Dynamic Roles: Patient, Caretaker, or Both)
   const registerUser = async (userData) => {
     const emailKey = userData.email.trim().toLowerCase();
+
+    // 0. UNIQUE EMAIL CONSTRAINT: Prevent duplicate registration with same email
+    let usersMap = {};
+    try {
+      const existingMapStr = await AsyncStorage.getItem('@registered_users_map');
+      if (existingMapStr) usersMap = JSON.parse(existingMapStr);
+    } catch (e) {}
+
+    if (usersMap[emailKey]) {
+      return {
+        success: false,
+        error: `An account with ${emailKey} already exists. Please switch to Sign In or use another email.`,
+      };
+    }
+
+    try {
+      const cloudUser = await findUserInCloud(emailKey);
+      if (cloudUser) {
+        return {
+          success: false,
+          error: `An account with ${emailKey} is already registered. Please sign in instead.`,
+        };
+      }
+    } catch (e) {}
+
     const roles = Array.isArray(userData.roles) && userData.roles.length > 0
       ? userData.roles
       : [userData.role || 'PATIENT'];

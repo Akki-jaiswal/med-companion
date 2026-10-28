@@ -87,7 +87,7 @@ export const AuthScreen = ({ onClose }) => {
       if (isPatientSelected) selectedRoles.push('PATIENT');
       if (isCaretakerSelected) selectedRoles.push('CARETAKER');
 
-      await registerUser({
+      const regRes = await registerUser({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
@@ -98,6 +98,11 @@ export const AuthScreen = ({ onClose }) => {
         relation: isCaretakerSelected ? relation.trim() : '',
         patientCodeToLink: isCaretakerSelected ? patientCodeToLink.trim() : null,
       });
+
+      if (!regRes.success) {
+        Alert.alert('Registration Failed', regRes.error);
+        return;
+      }
 
       const modeMessage = isBothSelected 
         ? 'Registered in Dual Mode (Patient & Caretaker)!'
