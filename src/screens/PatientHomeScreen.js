@@ -7,7 +7,7 @@ import { speakMedicationReminder } from '../services/voiceService';
 import { MedicineDetailModal } from './MedicineDetailModal';
 import { AddMedicationModal } from './AddMedicationModal';
 
-export const PatientHomeScreen = () => {
+export const PatientHomeScreen = ({ onNavigateMedicines }) => {
   const { 
     currentUser,
     medications, 
@@ -22,13 +22,28 @@ export const PatientHomeScreen = () => {
   // Dynamic patient name
   const patientDisplayName = currentUser?.name || 'Patient';
 
+  const isScheduledForToday = (med) => {
+    if (!med.frequency || med.frequency === 'Daily') return true;
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayName = dayNames[new Date().getDay()];
+    if (med.frequency === 'Specific Days') {
+      return Array.isArray(med.selectedDays) && med.selectedDays.includes(todayName);
+    }
+    if (med.frequency === 'Weekly') {
+      return !med.weeklyDay || med.weeklyDay === todayName;
+    }
+    return true;
+  };
+
   const patientMeds = medications.filter(m => 
     !m.patientId || 
     m.patientId === 'self' || 
     m.patientId === currentUser?.id || 
     m.patientId === currentUser?.pairingCode
   );
-  const pendingCount = patientMeds.filter(m => m.statusToday === 'pending').length;
+
+  const todayMeds = patientMeds.filter(isScheduledForToday);
+  const pendingCount = todayMeds.filter(m => m.statusToday === 'pending').length;
 
   const handleShareCode = async () => {
     if (!currentUser?.pairingCode) {
@@ -91,15 +106,26 @@ export const PatientHomeScreen = () => {
 
       {/* Section: Today's Schedule */}
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, largeFontMode && { fontSize: 24 }]}>Today's Medicines</Text>
-        <Text style={styles.dateBadge}>
-          {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-        </Text>
+        <View>
+          <Text style={[styles.sectionTitle, largeFontMode && { fontSize: 24 }]}>Today's Medicines</Text>
+          <Text style={styles.dateBadge}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+          </Text>
+        </View>
+
+        <TouchableOpacity 
+          style={styles.headerAddBtn}
+          onPress={() => setAddModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={18} color="#0D9488" />
+          <Text style={styles.headerAddBtnText}>Add</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Medication Cards List */}
-      {patientMeds.length > 0 ? (
-        patientMeds.map((med) => {
+      {todayMeds.length > 0 ? (
+        todayMeds.map((med) => {
           const isTaken = med.statusToday === 'taken';
           const isMissed = med.statusToday === 'missed';
 
@@ -187,9 +213,13 @@ export const PatientHomeScreen = () => {
           <View style={styles.emptyIconCircle}>
             <Ionicons name="medical-outline" size={44} color="#0D9488" />
           </View>
-          <Text style={styles.emptyTitle}>No Medications Scheduled Yet</Text>
+          <Text style={styles.emptyTitle}>
+            {patientMeds.length > 0 ? 'No Medicines Scheduled Today' : 'No Medications Scheduled Yet'}
+          </Text>
           <Text style={styles.emptySubtitle}>
-            Your schedule is currently empty. Tap below to add your first medicine, or share your code with your Caretaker.
+            {patientMeds.length > 0 
+              ? `You have ${patientMeds.length} prescription(s) scheduled on other calendar days. Check the Medicines tab to manage them.`
+              : 'Your schedule is currently empty. Tap below to add your first medicine, or share your code with your Caretaker.'}
           </Text>
 
           {/* Patient Code Share Box */}
@@ -204,14 +234,26 @@ export const PatientHomeScreen = () => {
             </View>
           )}
 
-          {/* Add Medication Trigger */}
-          <TouchableOpacity 
-            style={styles.addMedEmptyBtn} 
-            onPress={() => setAddModalVisible(true)}
-          >
-            <Ionicons name="add-circle" size={20} color="#FFFFFF" />
-            <Text style={styles.addMedEmptyBtnText}>Add First Medication</Text>
-          </TouchableOpacity>
+          {/* Action Buttons */}
+          <View style={styles.emptyActionsRow}>
+            <TouchableOpacity 
+              style={styles.addMedEmptyBtn} 
+              onPress={() => setAddModalVisible(true)}
+            >
+              <Ionicons name="add-circle" size={18} color="#FFFFFF" />
+              <Text style={styles.addMedEmptyBtnText}>Add Medicine</Text>
+            </TouchableOpacity>
+
+            {onNavigateMedicines && (
+              <TouchableOpacity 
+                style={styles.viewPrescriptionsBtn} 
+                onPress={onNavigateMedicines}
+              >
+                <Ionicons name="list-outline" size={18} color="#0D9488" />
+                <Text style={styles.viewPrescriptionsBtnText}>All Medicines</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
 
@@ -557,5 +599,44 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  headerAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  headerAddBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D9488',
+  },
+  emptyActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+    width: '100%',
+  },
+  viewPrescriptionsBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  viewPrescriptionsBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
   },
 });

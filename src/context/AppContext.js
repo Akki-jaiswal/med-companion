@@ -703,6 +703,62 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // Update existing medicine
+  const updateMedication = async (updatedMed) => {
+    const now = Date.now();
+    const targetTimestamp = parseTimeToTimestamp(updatedMed.time, now);
+    const item = {
+      ...updatedMed,
+      targetTimestamp,
+    };
+
+    firedAlarmIdsRef.current.delete(item.id);
+
+    const updated = medications.map(m => m.id === item.id ? item : m);
+    saveMedications(updated);
+
+    if (item.patientId) {
+      try {
+        let pMeds = [];
+        const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${item.patientId}`);
+        if (pMedsStr) pMeds = JSON.parse(pMedsStr);
+        pMeds = pMeds.map(m => m.id === item.id ? item : m);
+        await AsyncStorage.setItem(`@patient_medications_${item.patientId}`, JSON.stringify(pMeds));
+      } catch (e) {}
+    }
+
+    const delay = Math.max(1, Math.round((targetTimestamp - now) / 1000));
+    scheduleMedicationAlarm(item, delay);
+  };
+
+  // Delete medicine
+  const deleteMedication = async (medId) => {
+    const pendingNotifId = pendingEscalationsRef.current[medId];
+    if (pendingNotifId) {
+      cancelScheduledNotification(pendingNotifId);
+      delete pendingEscalationsRef.current[medId];
+    }
+    firedAlarmIdsRef.current.delete(medId);
+    if (activeAlarmMed?.id === medId) {
+      setActiveAlarmMed(null);
+    }
+
+    const targetMed = medications.find(m => m.id === medId);
+    const updated = medications.filter(m => m.id !== medId);
+    saveMedications(updated);
+
+    if (targetMed?.patientId) {
+      try {
+        let pMeds = [];
+        const pMedsStr = await AsyncStorage.getItem(`@patient_medications_${targetMed.patientId}`);
+        if (pMedsStr) {
+          pMeds = JSON.parse(pMedsStr).filter(m => m.id !== medId);
+          await AsyncStorage.setItem(`@patient_medications_${targetMed.patientId}`, JSON.stringify(pMeds));
+        }
+      } catch (e) {}
+    }
+  };
+
   // Add new patient
   const addPatient = async (patientData) => {
     const code = patientData.code || ('MED-' + Math.floor(1000 + Math.random() * 9000));
@@ -905,6 +961,8 @@ export const AppProvider = ({ children }) => {
         pairPatientByCode,
         medications,
         addMedication,
+        updateMedication,
+        deleteMedication,
         markAsTaken,
         snoozeAlarm,
         activeAlarmMed,

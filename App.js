@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as NavigationBar from 'expo-navigation-bar';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { PatientHomeScreen } from './src/screens/PatientHomeScreen';
+import { MedicinesScreen } from './src/screens/MedicinesScreen';
 import { CaretakerDashboardScreen } from './src/screens/CaretakerDashboardScreen';
 import { WeeklyReportScreen } from './src/screens/WeeklyReportScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
@@ -49,9 +50,9 @@ const MainNavigator = () => {
   const renderScreen = () => {
     switch (activeTab) {
       case 'home':
-        return userRole === 'PATIENT' ? <PatientHomeScreen /> : <CaretakerDashboardScreen onNavigateReport={() => setActiveTab('reports')} />;
+        return userRole === 'PATIENT' ? <PatientHomeScreen onNavigateMedicines={() => setActiveTab('prescriptions')} /> : <CaretakerDashboardScreen onNavigateReport={() => setActiveTab('reports')} />;
       case 'prescriptions':
-        return userRole === 'PATIENT' ? <PatientHomeScreen /> : <CaretakerDashboardScreen onNavigateReport={() => setActiveTab('reports')} />;
+        return userRole === 'PATIENT' ? <MedicinesScreen /> : <CaretakerDashboardScreen onNavigateReport={() => setActiveTab('reports')} />;
       case 'reports':
         return <WeeklyReportScreen onBack={() => setActiveTab('home')} />;
       case 'profile':
