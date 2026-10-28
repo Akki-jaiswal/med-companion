@@ -171,13 +171,15 @@ export const AppProvider = ({ children }) => {
           // Load user-scoped medications
           const savedMeds = await AsyncStorage.getItem(`@medications_${userToLoad.id}`) || await AsyncStorage.getItem('@medications');
           if (savedMeds) setMedications(JSON.parse(savedMeds));
+
+          // Load user-scoped adherence history
+          const userHistoryStr = await AsyncStorage.getItem(`@adherence_history_${userToLoad.id}`) || await AsyncStorage.getItem('@adherence_history');
+          if (userHistoryStr) setAdherenceHistory(JSON.parse(userHistoryStr));
         } else {
           // No user is logged in
           setCurrentUser(null);
+          setAdherenceHistory([]);
         }
-
-        const savedHistory = await AsyncStorage.getItem('@adherence_history');
-        if (savedHistory) setAdherenceHistory(JSON.parse(savedHistory));
       } catch (e) {
         console.log('Error reading storage', e);
       }
@@ -458,6 +460,14 @@ export const AppProvider = ({ children }) => {
       } else {
         setMedications([]);
       }
+
+      // Load user-specific adherence history
+      const userHistoryStr = await AsyncStorage.getItem(`@adherence_history_${foundUser.id}`);
+      if (userHistoryStr) {
+        setAdherenceHistory(JSON.parse(userHistoryStr));
+      } else {
+        setAdherenceHistory([]);
+      }
     } catch (e) {
       console.log('Error loading user-scoped data:', e);
     }
@@ -475,6 +485,7 @@ export const AppProvider = ({ children }) => {
       try {
         await AsyncStorage.setItem(`@medications_${currentUser.id}`, JSON.stringify(medications));
         await AsyncStorage.setItem(`@patients_${currentUser.id}`, JSON.stringify(patients));
+        await AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(adherenceHistory));
       } catch (e) {}
     }
 
@@ -530,10 +541,19 @@ export const AppProvider = ({ children }) => {
 
     const updated = medications.map(m => {
       if (m.id === medId) {
-        setAdherenceHistory(prev => [
-          { date: todayStr, pillName: m.name, time: m.time, status: 'Taken', onTime: true },
-          ...prev
-        ]);
+        const targetOwnerId = m.patientId || currentUser?.id || 'self';
+        const newRecord = { date: todayStr, pillName: m.name, time: m.time, status: 'Taken', onTime: true };
+        setAdherenceHistory(prev => {
+          const nextHist = [newRecord, ...prev];
+          if (currentUser?.id) {
+            AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
+          }
+          if (targetOwnerId && targetOwnerId !== currentUser?.id) {
+            AsyncStorage.setItem(`@adherence_history_${targetOwnerId}`, JSON.stringify(nextHist)).catch(() => {});
+          }
+          AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
+          return nextHist;
+        });
         return { ...m, statusToday: 'taken', takenAt: timeStr };
       }
       return m;
@@ -576,10 +596,19 @@ export const AppProvider = ({ children }) => {
     const updated = medications.map(m => m.id === med.id ? { ...m, statusToday: 'missed' } : m);
     saveMedications(updated);
 
-    setAdherenceHistory(prev => [
-      { date: todayStr, pillName: med.name, time: med.time, status: 'Missed', onTime: false },
-      ...prev
-    ]);
+    const targetOwnerId = med.patientId || currentUser?.id || 'self';
+    const missedRecord = { date: todayStr, pillName: med.name, time: med.time, status: 'Missed', onTime: false };
+    setAdherenceHistory(prev => {
+      const nextHist = [missedRecord, ...prev];
+      if (currentUser?.id) {
+        AsyncStorage.setItem(`@adherence_history_${currentUser.id}`, JSON.stringify(nextHist)).catch(() => {});
+      }
+      if (targetOwnerId && targetOwnerId !== currentUser?.id) {
+        AsyncStorage.setItem(`@adherence_history_${targetOwnerId}`, JSON.stringify(nextHist)).catch(() => {});
+      }
+      AsyncStorage.setItem('@adherence_history', JSON.stringify(nextHist)).catch(() => {});
+      return nextHist;
+    });
 
     setActiveAlarmMed(null);
 
