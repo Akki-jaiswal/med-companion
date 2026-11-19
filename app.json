@@ -56,10 +56,6 @@
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
     },
-    "extra": {
-      "eas": {
-        "projectId": "med-companion-akki"
-      }
-    }
+
   }
 }
