@@ -30,7 +30,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.akkijaiswal.medcompanion",
       "infoPlist": {
-        "UIBackgroundModes": ["fetch", "remote-notification"]
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -56,6 +59,10 @@
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
     },
-
+    "extra": {
+      "eas": {
+        "projectId": "1cf2998c-5a65-4e67-b04b-fdd65562798b"
+      }
+    }
   }
 }
